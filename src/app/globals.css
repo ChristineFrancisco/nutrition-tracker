@@ -2,16 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Light mode — Christine's custom palette.
+ *   Onyx           #080b0c   primary text on cream
+ *   Deep Space Blue #1d2d3e  secondary text / muted copy
+ *   Rusty Spice    #ab5736   primary accent (buttons, links, brand)
+ *   Light Bronze   #e5a37a   soft accent / hover / highlight
+ *   Eggshell       #f8f2dc   page background
+ */
+/**
+ * Values are SPACE-separated (not comma-separated) so they compose with
+ * Tailwind's alpha-value syntax: `rgb(var(--brand-600) / <alpha-value>)`.
+ * Commas here would expand to `rgb(r, g, b / 1)` — invalid mixed syntax
+ * that makes the utility silently fall back to transparent.
+ */
 :root {
-  --foreground-rgb: 24, 24, 27;
-  --background-rgb: 250, 250, 250;
+  --foreground-rgb: 8 11 12;         /* Onyx */
+  --background-rgb: 248 242 220;     /* Eggshell */
+
+  /* Brand — Rusty Spice family, with a bronze tint for the pale shades
+     so accent backgrounds (e.g. the capture-tip callout) feel on-palette
+     rather than like a random green-tinted cream. */
+  --brand-50: 253 241 225;           /* very pale bronze */
+  --brand-100: 249 224 198;          /* pale bronze */
+  --brand-500: 229 163 122;          /* Light Bronze */
+  --brand-600: 171 87 54;            /* Rusty Spice */
+  --brand-700: 137 70 43;            /* darker rust (hover/active) */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 245, 245, 244;
-    --background-rgb: 10, 10, 10;
-  }
+/**
+ * Dark mode — intentionally unchanged from the original design. Zinc-based
+ * neutrals with the green brand family, so every `dark:` variant that was
+ * already in the app keeps looking the same.
+ */
+.dark {
+  --foreground-rgb: 245 245 244;
+  --background-rgb: 10 10 10;
+
+  --brand-50: 240 253 244;
+  --brand-100: 220 252 231;
+  --brand-500: 34 197 94;
+  --brand-600: 22 163 74;
+  --brand-700: 21 128 61;
 }
 
 body {
