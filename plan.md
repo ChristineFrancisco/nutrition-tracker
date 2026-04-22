@@ -66,16 +66,26 @@ type EstimatedItem = {
   nutrients: Nutrients;
 };
 
+type AnalyzeResult =
+  | {
+      status: "ok";
+      items: EstimatedItem[];
+      totals: Nutrients;
+      modelNotes: string;
+    }
+  | {
+      status: "rejected";
+      reason: string; // short, user-facing, e.g. "This looks like a receipt, not food."
+    };
+
 interface NutritionEstimator {
-  analyze(input: { imageUrl: string; userNote?: string }): Promise<{
-    items: EstimatedItem[];
-    totals: Nutrients;
-    modelNotes: string;
-  }>;
+  analyze(input: { imageUrl: string; userNote?: string }): Promise<AnalyzeResult>;
 }
 ```
 
 The prompt to the vision model asks it to: itemize visible foods, estimate portion sizes, return per-item nutrient numbers in the fixed schema above, flag visible uncertainty, and surface "good" vs "bad" highlights. Server validates the JSON response with Zod before persisting.
+
+**Not-food short-circuit.** The same prompt instructs the model to inspect the image first and, if it can't identify any food, return `{status:"rejected", reason:"<short explanation>"}` instead of attempting analysis. This keeps us to a single round-trip (no pre-classifier pass) while capping the output tokens for non-food images at ~50 instead of ~600 — the input-token cost is unavoidable since the image is what drives it. The server writes these rows with `entries.status='rejected'` and `entries.rejection_reason=<reason>`; the Today feed shows a neutral "Not food" badge with the reason underneath so the user knows what happened.
 
 ## 5. Data model (Postgres)
 
@@ -247,9 +257,9 @@ Numbers above are Claude's published rates as of early 2026 — verify on the An
 ## 13. Privacy & photo retention
 
 - **Bucket private by default.** Supabase Storage bucket is not publicly readable; photos are served to the user only via short-lived signed URLs.
-- **Automatic 24-hour photo deletion.** A scheduled Postgres function (or Supabase Edge Function cron) runs hourly and deletes any `entries.photo_path` older than 24 hours — both the Storage object and the `photo_path` column. The structured nutrition data (`entry_items.nutrients`, totals, date, notes) is preserved indefinitely; only the image is removed.
-- **Transparent to the user.** At first capture, a one-time modal explains: *"Photos are automatically deleted 24 hours after upload. Your calorie and nutrient data is kept. If you want to correct an entry, do it the same day."* The entry detail screen shows a countdown ("photo deletes in 18h") while the photo is still available, and a neutral placeholder afterward.
-- **Trade-off note.** 24 hours is aggressive for a tracker — you lose the ability to verify old entries visually. If it turns out users regularly want to re-examine old photos to catch mistakes, consider loosening to 7 days, or making the window user-configurable (24h / 7d / 30d / never) in Settings. Flagging here so it's explicit.
+- **Automatic 7-day photo deletion.** A scheduled Postgres function (or Supabase Edge Function cron) runs hourly and deletes any `entries.photo_path` past its `photo_expires_at` — both the Storage object and the `photo_path` column. The structured nutrition data (`entry_items.nutrients`, totals, date, notes) is preserved indefinitely; only the image is removed. 7 days = long enough to review a weekend's meals on Monday and catch portion-estimate mistakes; short enough to keep storage tiny (~50MB/week at the 20/day cap).
+- **Transparent to the user.** The capture screen footer reads: *"Photos are automatically deleted 7 days after upload. Your nutrition data is kept."* Each entry card shows a countdown (*"photo will be removed in 3d 4h"*) while the image is still available, and a neutral placeholder afterward.
+- **Configurable retention.** The `profiles.photo_retention_hours` column (default 168) lets us expose a user-facing slider (24h / 7d / 30d) later in Settings without a schema change. The value is read at insert time per entry, so changing it only affects future entries.
 - **Explicit delete.** The entry detail screen has a "Delete entry" action that removes the photo from Storage immediately and deletes the entry + items rows.
 - **Faces/receipts/locations.** EXIF stripped on upload (server-side) so GPS data doesn't survive. Auto-deletion further shrinks the exposure window.
 
