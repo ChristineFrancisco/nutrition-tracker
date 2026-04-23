@@ -36,6 +36,11 @@ type DRI = {
   calcium_mg: number;
   iron_mg: number;
   magnesium_mg: number;
+  zinc_mg: number;
+  phosphorus_mg: number;
+  copper_mg: number;
+  selenium_mcg: number;
+  manganese_mg: number;
   vitamin_a_mcg: number;
   vitamin_c_mg: number;
   vitamin_d_mcg: number;
@@ -43,6 +48,11 @@ type DRI = {
   vitamin_k_mcg: number;
   b12_mcg: number;
   folate_mcg: number;
+  thiamin_mg: number;
+  riboflavin_mg: number;
+  niacin_mg: number;
+  b6_mg: number;
+  choline_mg: number;
 };
 
 /**
@@ -58,6 +68,11 @@ const MALE: Record<AgeBand, DRI> = {
     calcium_mg: 1000,
     iron_mg: 8,
     magnesium_mg: 400,
+    zinc_mg: 11,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 2.3,
     vitamin_a_mcg: 900,
     vitamin_c_mg: 90,
     vitamin_d_mcg: 15,
@@ -65,6 +80,11 @@ const MALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 120,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.2,
+    riboflavin_mg: 1.3,
+    niacin_mg: 16,
+    b6_mg: 1.3,
+    choline_mg: 550,
   },
   "31-50": {
     protein_g: 56,
@@ -73,6 +93,11 @@ const MALE: Record<AgeBand, DRI> = {
     calcium_mg: 1000,
     iron_mg: 8,
     magnesium_mg: 420,
+    zinc_mg: 11,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 2.3,
     vitamin_a_mcg: 900,
     vitamin_c_mg: 90,
     vitamin_d_mcg: 15,
@@ -80,6 +105,11 @@ const MALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 120,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.2,
+    riboflavin_mg: 1.3,
+    niacin_mg: 16,
+    b6_mg: 1.3,
+    choline_mg: 550,
   },
   "51-70": {
     protein_g: 56,
@@ -88,6 +118,11 @@ const MALE: Record<AgeBand, DRI> = {
     calcium_mg: 1000,
     iron_mg: 8,
     magnesium_mg: 420,
+    zinc_mg: 11,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 2.3,
     vitamin_a_mcg: 900,
     vitamin_c_mg: 90,
     vitamin_d_mcg: 15,
@@ -95,6 +130,11 @@ const MALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 120,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.2,
+    riboflavin_mg: 1.3,
+    niacin_mg: 16,
+    b6_mg: 1.7,
+    choline_mg: 550,
   },
   "71+": {
     protein_g: 56,
@@ -103,6 +143,11 @@ const MALE: Record<AgeBand, DRI> = {
     calcium_mg: 1200,
     iron_mg: 8,
     magnesium_mg: 420,
+    zinc_mg: 11,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 2.3,
     vitamin_a_mcg: 900,
     vitamin_c_mg: 90,
     vitamin_d_mcg: 20,
@@ -110,6 +155,11 @@ const MALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 120,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.2,
+    riboflavin_mg: 1.3,
+    niacin_mg: 16,
+    b6_mg: 1.7,
+    choline_mg: 550,
   },
 };
 
@@ -121,6 +171,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     calcium_mg: 1000,
     iron_mg: 18,
     magnesium_mg: 310,
+    zinc_mg: 8,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 1.8,
     vitamin_a_mcg: 700,
     vitamin_c_mg: 75,
     vitamin_d_mcg: 15,
@@ -128,6 +183,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 90,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.1,
+    riboflavin_mg: 1.1,
+    niacin_mg: 14,
+    b6_mg: 1.3,
+    choline_mg: 425,
   },
   "31-50": {
     protein_g: 46,
@@ -136,6 +196,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     calcium_mg: 1000,
     iron_mg: 18,
     magnesium_mg: 320,
+    zinc_mg: 8,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 1.8,
     vitamin_a_mcg: 700,
     vitamin_c_mg: 75,
     vitamin_d_mcg: 15,
@@ -143,6 +208,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 90,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.1,
+    riboflavin_mg: 1.1,
+    niacin_mg: 14,
+    b6_mg: 1.3,
+    choline_mg: 425,
   },
   "51-70": {
     protein_g: 46,
@@ -151,6 +221,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     calcium_mg: 1200,
     iron_mg: 8,
     magnesium_mg: 320,
+    zinc_mg: 8,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 1.8,
     vitamin_a_mcg: 700,
     vitamin_c_mg: 75,
     vitamin_d_mcg: 15,
@@ -158,6 +233,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 90,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.1,
+    riboflavin_mg: 1.1,
+    niacin_mg: 14,
+    b6_mg: 1.5,
+    choline_mg: 425,
   },
   "71+": {
     protein_g: 46,
@@ -166,6 +246,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     calcium_mg: 1200,
     iron_mg: 8,
     magnesium_mg: 320,
+    zinc_mg: 8,
+    phosphorus_mg: 700,
+    copper_mg: 0.9,
+    selenium_mcg: 55,
+    manganese_mg: 1.8,
     vitamin_a_mcg: 700,
     vitamin_c_mg: 75,
     vitamin_d_mcg: 20,
@@ -173,6 +258,11 @@ const FEMALE: Record<AgeBand, DRI> = {
     vitamin_k_mcg: 90,
     b12_mcg: 2.4,
     folate_mcg: 400,
+    thiamin_mg: 1.1,
+    riboflavin_mg: 1.1,
+    niacin_mg: 14,
+    b6_mg: 1.5,
+    choline_mg: 425,
   },
 };
 

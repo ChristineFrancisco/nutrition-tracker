@@ -35,15 +35,20 @@ SHAPE A — the image shows real food you can analyze:
         "protein_g": <number>, "carbs_g": <number>, "fat_g": <number>,
         "saturated_fat_g": <number>, "trans_fat_g": <number>,
         "fiber_g": <number>, "sugar_g": <number>, "added_sugar_g": <number>,
+        "cholesterol_mg": <number>,
         "sodium_mg": <number>, "potassium_mg": <number>, "calcium_mg": <number>,
         "iron_mg": <number>, "magnesium_mg": <number>,
+        "zinc_mg": <number>, "phosphorus_mg": <number>, "copper_mg": <number>,
+        "selenium_mcg": <number>, "manganese_mg": <number>,
         "vitamin_a_mcg": <number>, "vitamin_c_mg": <number>,
         "vitamin_d_mcg": <number>, "vitamin_e_mg": <number>,
-        "vitamin_k_mcg": <number>, "b12_mcg": <number>, "folate_mcg": <number>
+        "vitamin_k_mcg": <number>, "b12_mcg": <number>, "folate_mcg": <number>,
+        "thiamin_mg": <number>, "riboflavin_mg": <number>, "niacin_mg": <number>,
+        "b6_mg": <number>, "choline_mg": <number>
       }
     }
   ],
-  "totals": { <same 21 nutrient keys, summed across items> },
+  "totals": { <same 32 nutrient keys, summed across items> },
   "modelNotes": "<required. MUST begin with a source tag in square brackets, then one sentence of caveats. See 'Source preference' in the Rules. Examples: '[Naya published menu] Falafel bowl, regular rice portion.' — '[Photo estimate] No brand named; portions inferred from plate size.' — '[Mixed: Chipotle menu + photo estimate] Burrito bowl plus an extra side of guac visible in frame.'>",
   "good_highlights": ["<short positive callout>", ...],   // optional, max 6
   "bad_highlights":  ["<short negative callout>", ...]    // optional, max 6
@@ -56,7 +61,19 @@ SHAPE B — the image is NOT food (receipt, screenshot, person, landscape, blurr
 }
 
 Rules:
-- Every nutrient number must be a non-negative number, not a string and not null. Use 0 ONLY when the food genuinely contains zero of that nutrient (e.g. plain water has 0 protein, raw sugar has 0 fiber). NEVER use 0 as a fallback just because you don't have exact data — always estimate from ingredient knowledge instead. A falafel bowl has real iron, folate, magnesium, and potassium from the chickpeas; zeros there would be wrong.
+- Every nutrient number must be a non-negative number, not a string and not null. Use 0 ONLY when the food genuinely contains zero of that nutrient (e.g. plain water has 0 protein, raw sugar has 0 fiber, plain vegetables have 0 cholesterol since cholesterol is only in animal products). NEVER use 0 as a fallback just because you don't have exact data — always estimate from ingredient knowledge instead. A falafel bowl has real iron, folate, magnesium, zinc, copper, manganese, B-vitamins, and potassium from the chickpeas/tahini/rice/greens; zeros there would be wrong.
+- Quick ingredient cues for the less-common nutrients so you have no excuse to zero them out:
+  - cholesterol_mg: ONLY in animal products (eggs, meat, dairy, seafood). Plants are 0.
+  - zinc_mg: red meat, shellfish (oysters are huge), legumes, seeds, nuts, whole grains.
+  - phosphorus_mg: dairy, meat, fish, eggs, nuts, seeds, legumes, whole grains.
+  - copper_mg: liver, shellfish, nuts, seeds, whole grains, dark chocolate, mushrooms.
+  - selenium_mcg: brazil nuts (one nut can be a day's supply), seafood, meat, eggs, whole grains.
+  - manganese_mg: whole grains, nuts, legumes, leafy greens, tea.
+  - thiamin_mg (B1): pork, whole/enriched grains, legumes, nuts, seeds.
+  - riboflavin_mg (B2): dairy, eggs, meat, leafy greens, enriched grains.
+  - niacin_mg (B3): meat, poultry, fish, enriched grains, legumes.
+  - b6_mg: poultry, fish, potatoes, bananas, chickpeas, fortified cereals.
+  - choline_mg: eggs (huge — one egg ≈ 150 mg), meat, fish, dairy, cruciferous veggies, soybeans.
 - "totals" must equal the sum of the items' nutrients (your best arithmetic — the server may re-sum).
 - Portion sizes: prefer visible reference objects (hands, forks, standard cups/plates) when estimating. If no reference is visible, assume standard restaurant or grocery serving sizes and set confidence to "low" or "medium".
 - Highlights are short phrases like "high fiber", "high sodium", "added sugar" — not full sentences.

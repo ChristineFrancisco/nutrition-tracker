@@ -41,6 +41,7 @@ export default async function GoalsPage({
         "trans_fat_g",
         "fiber_g",
         "added_sugar_g",
+        "cholesterol_mg",
       ],
     },
     {
@@ -51,6 +52,11 @@ export default async function GoalsPage({
         "calcium_mg",
         "iron_mg",
         "magnesium_mg",
+        "zinc_mg",
+        "phosphorus_mg",
+        "copper_mg",
+        "selenium_mcg",
+        "manganese_mg",
       ],
     },
     {
@@ -63,6 +69,11 @@ export default async function GoalsPage({
         "vitamin_k_mcg",
         "b12_mcg",
         "folate_mcg",
+        "thiamin_mg",
+        "riboflavin_mg",
+        "niacin_mg",
+        "b6_mg",
+        "choline_mg",
       ],
     },
   ];

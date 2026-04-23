@@ -135,11 +135,17 @@ export function computeGoals(profile: ProfileForGoals): Nutrients {
     fiber_g,
     sugar_g: 0, // no DRI/FDA target for total sugar; tracked for reporting only
     added_sugar_g,
+    cholesterol_mg: 300, // FDA DV ceiling; no personalized DRI exists
     sodium_mg: 2300, // AHA/FDA ceiling, same for all adults
     potassium_mg: dri.potassium_mg,
     calcium_mg: dri.calcium_mg,
     iron_mg: dri.iron_mg,
     magnesium_mg: dri.magnesium_mg,
+    zinc_mg: dri.zinc_mg,
+    phosphorus_mg: dri.phosphorus_mg,
+    copper_mg: dri.copper_mg,
+    selenium_mcg: dri.selenium_mcg,
+    manganese_mg: dri.manganese_mg,
     vitamin_a_mcg: dri.vitamin_a_mcg,
     vitamin_c_mg: dri.vitamin_c_mg,
     vitamin_d_mcg: dri.vitamin_d_mcg,
@@ -147,5 +153,10 @@ export function computeGoals(profile: ProfileForGoals): Nutrients {
     vitamin_k_mcg: dri.vitamin_k_mcg,
     b12_mcg: dri.b12_mcg,
     folate_mcg: dri.folate_mcg,
+    thiamin_mg: dri.thiamin_mg,
+    riboflavin_mg: dri.riboflavin_mg,
+    niacin_mg: dri.niacin_mg,
+    b6_mg: dri.b6_mg,
+    choline_mg: dri.choline_mg,
   };
 }

@@ -25,6 +25,7 @@ export const FDA_DAILY_VALUES: Nutrients = {
   fiber_g: 28,
   sugar_g: 0,          // FDA doesn't set a DV for total sugar; stored only
   added_sugar_g: 50,
+  cholesterol_mg: 300, // ceiling
 
   // Minerals
   sodium_mg: 2300,
@@ -32,6 +33,11 @@ export const FDA_DAILY_VALUES: Nutrients = {
   calcium_mg: 1300,
   iron_mg: 18,
   magnesium_mg: 420,
+  zinc_mg: 11,
+  phosphorus_mg: 1250,
+  copper_mg: 0.9,
+  selenium_mcg: 55,
+  manganese_mg: 2.3,
 
   // Vitamins
   vitamin_a_mcg: 900,
@@ -41,4 +47,9 @@ export const FDA_DAILY_VALUES: Nutrients = {
   vitamin_k_mcg: 120,
   b12_mcg: 2.4,
   folate_mcg: 400,
+  thiamin_mg: 1.2,
+  riboflavin_mg: 1.3,
+  niacin_mg: 16,
+  b6_mg: 1.7,
+  choline_mg: 550,
 };
