@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image";
-import { createEntry } from "./actions";
+import { analyzeEntry, createEntry } from "./actions";
 
 type Phase =
   | "idle"
@@ -85,11 +85,11 @@ export default function CaptureForm({ userId }: { userId: string }) {
       const form = new FormData();
       form.set("photo_path", path);
       form.set("user_note", note);
-      await createEntry(form);
+      const { entryId } = await createEntry(form);
 
-      // Success — reset for the next capture. The server action already
-      // called revalidatePath("/today"), so the feed below will update
-      // on the next render cycle. Briefly show a "saved" state so the
+      // Success — reset for the next capture. createEntry has already
+      // called revalidatePath("/today"), so the pending card appears on
+      // the next render cycle. Briefly show a "saved" state so the
       // interaction feels confirmed.
       setPhase("saved");
       setFile(null);
@@ -98,6 +98,17 @@ export default function CaptureForm({ userId }: { userId: string }) {
       setTimeout(() => {
         setPhase((p) => (p === "saved" ? "idle" : p));
       }, 2000);
+
+      // Kick off AI analysis without awaiting. The HTTP POST stays open
+      // until the server action completes (5–15s on Gemini Flash), at
+      // which point a second revalidatePath("/today") fires and the feed
+      // updates from "Analyzing…" to "Analyzed" or "Not food". We don't
+      // block the UI on it — the user is free to snap another photo.
+      analyzeEntry(entryId).catch((err) => {
+        // The action marks the row as `failed` on exceptions, so this
+        // console.error is just for local debugging.
+        console.error("analyzeEntry failed:", err);
+      });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Something went wrong.";
       setErrorMsg(message);
@@ -203,15 +214,25 @@ export default function CaptureForm({ userId }: { userId: string }) {
           <>
             <label className="block space-y-1">
               <span className="text-sm font-medium">
-                Note <span className="font-normal text-zinc-400">(optional)</span>
+                What is it?{" "}
+                <span className="font-normal text-zinc-400">(optional)</span>
+              </span>
+              <span className="block text-xs text-zinc-500">
+                A photo alone can be ambiguous — a sentence or two helps the
+                AI identify brands, ingredients, and portion cues it
+                can&apos;t see.
               </span>
               <textarea
                 name="user_note"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                rows={2}
+                rows={3}
                 maxLength={500}
-                placeholder="e.g. lunch portion, homemade, extra sauce on the side"
+                placeholder={
+                  "e.g. Classico spaghetti sauce with diced mushrooms and carrots\n" +
+                  "or: Naya bowl — chicken shawarma, rice, garlic sauce\n" +
+                  "or: homemade, half portion"
+                }
                 className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-brand-500 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950"
               />
             </label>

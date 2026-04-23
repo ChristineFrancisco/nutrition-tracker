@@ -9,7 +9,7 @@ Core loop: **snap → estimate → log → review.**
 ## 2. Decisions locked in
 
 - **Stack:** Next.js 14 (App Router) full-stack app written in TypeScript. React Server Components for reads, Route Handlers / Server Actions for writes and AI calls.
-- **AI provider:** abstracted behind a `NutritionEstimator` interface so Claude vision, OpenAI vision, or any future model can slot in without touching UI code. Initial implementation will ship one concrete adapter; swapping is a config change.
+- **AI provider:** abstracted behind a `NutritionEstimator` interface so Gemini, Claude, OpenAI, or any future vision model can slot in without touching UI code. Initial implementation ships a Google Gemini 2.5 Flash adapter (free tier covers typical personal use); swapping is a one-file change.
 - **Data store:** Supabase (Postgres + Auth + Storage). Photos in Supabase Storage, structured data in Postgres, Row Level Security per user.
 - **Targets:** user chooses at onboarding between **Generic FDA Daily Values** (no personal info, 2,000 kcal reference) and **Personalized DRI-based** (requires age + biological sex, optional height/weight/activity for calorie accuracy). Switchable later in Settings.
 
@@ -223,36 +223,39 @@ Vision models are often off by 30–50% on portion size, and sometimes misidenti
 
 ## 12. Cost — 20 analyses/day cap, with estimates
 
-**Cap.** Hard per-user limit of 20 successful analyses per 24-hour rolling window, enforced in the `/api/entries/analyze` handler. A 21st attempt returns a friendly message with the time when the next slot frees up. Failed analyses (model errors, invalid JSON) don't count against the cap. Text-only entries are free and uncapped.
+**Cap.** Hard per-user limit of 20 successful analyses per 24-hour rolling window, enforced in the `analyzeEntry` server action. A 21st attempt is marked `failed` with a user-facing message about the quota. Failed analyses (model errors, invalid JSON) don't count against the cap. Text-only entries are free and uncapped.
 
-**Claude API pricing (as of the latest Anthropic docs):**
+**Provider: Google Gemini 2.5 Flash.** Picked because the free tier is generous enough to cover typical personal use without a billing setup — a solo user logging ~5 photos/day rarely touches the paid rails. Accuracy on food photos is comparable to Claude Haiku in our testing, and the `@google/genai` SDK supports `responseMimeType: "application/json"` so we get schema-clean JSON without the prefill trick.
 
-- Claude Haiku 4.5: **$1 / 1M input tokens, $5 / 1M output tokens**
-- Claude Sonnet 4.6: **$3 / 1M input tokens, $15 / 1M output tokens**
+**Free tier** (Google AI Studio, as of early 2026 — verify at https://ai.google.dev/gemini-api/docs/rate-limits):
+
+- Gemini 2.5 Flash: free tier with double-digit RPM and a few hundred requests per day per project.
+
+**Pay-as-you-go pricing** (for when you exceed free-tier limits):
+
+- Gemini 2.5 Flash: **~$0.30 / 1M input tokens, ~$2.50 / 1M output tokens** (≤128K context; check the current pricing page before billing).
 
 **Per-photo token budget** (based on a 1600px-longest-edge compressed JPEG plus our prompt and structured JSON reply):
 
-- Image: ~2,000–2,500 input tokens (Anthropic charges roughly `(width × height) / 750` tokens)
-- Prompt: ~500 input tokens
-- Structured JSON reply: ~600 output tokens
+- Image: ~300 tokens (Gemini charges a flat-ish token count per image for standard-resolution inputs).
+- Prompt: ~500 input tokens.
+- Structured JSON reply: ~600 output tokens.
 
-**Per-photo cost (rounded):**
+**Per-photo cost (rounded, paid tier):**
 
 | Model | Input cost | Output cost | Total per photo |
 |---|---|---|---|
-| Haiku 4.5 | ~$0.003 | ~$0.003 | **~$0.006** |
-| Sonnet 4.6 | ~$0.009 | ~$0.009 | **~$0.018** |
+| Gemini 2.5 Flash | ~$0.0003 | ~$0.0015 | **~$0.002** |
 
-**What that means at the 20/day cap:**
+**What that means at the 20/day cap (paid tier only):**
 
 | Model | Max/user/day | Max/user/month | Realistic 5/day | Realistic/month |
 |---|---|---|---|---|
-| Haiku 4.5 | ~$0.12 | **~$3.60** | ~$0.03 | **~$0.90** |
-| Sonnet 4.6 | ~$0.36 | **~$10.80** | ~$0.09 | **~$2.70** |
+| Gemini 2.5 Flash | ~$0.04 | **~$1.20** | ~$0.01 | **~$0.30** |
 
-**Recommendation:** start on Haiku 4.5. Food identification and portion estimation from clear photos is well within Haiku's capabilities, and it's 3× cheaper. If you find the estimates are noticeably worse in practice, switch the adapter to Sonnet — that's literally a one-line config change given the `NutritionEstimator` abstraction. Consider also caching identical photos (rare but possible) and using prompt caching for the static system prompt (up to 90% off the input portion).
+**Recommendation:** stay on the Gemini free tier for personal use. If daily photo volume climbs above the free-tier RPD or if the app is opened up to multiple users, enabling billing on the same Google Cloud project gets you onto pay-as-you-go at the rates above. Other adapters (Claude Haiku/Sonnet, OpenAI) are drop-in replacements via the `NutritionEstimator` interface — the system prompt in `src/lib/estimator/prompt.ts` is provider-agnostic.
 
-Numbers above are Claude's published rates as of early 2026 — verify on the Anthropic pricing page before billing anyone.
+Numbers above are Google's published rates as of early 2026 — verify on the Gemini pricing page before relying on them.
 
 ## 13. Privacy & photo retention
 

@@ -43,7 +43,7 @@ export default function LoginPage({
           <div className="space-y-2 rounded-lg bg-brand-50 p-4 text-sm text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
             <p className="font-medium">Check your email.</p>
             <p>
-              We sent a sign-in link to <strong>{state.email}</strong>. Click
+              We sent a sign-in link to <strong>{state.email}</strong> from Supabase. Click
               the link to finish signing in.
             </p>
           </div>

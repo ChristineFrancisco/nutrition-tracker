@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentProfile, getLatestGoals } from "@/lib/profile";
-import { getTodayEntries, type EntryRow } from "@/lib/entries";
+import { getTodayEntries } from "@/lib/entries";
 import CaptureForm from "./CaptureForm";
-import DeleteEntryButton from "./DeleteEntryButton";
+import EntryCard from "./EntryCard";
 
 export default async function TodayPage() {
   const profile = await getCurrentProfile();
@@ -99,94 +99,4 @@ export default async function TodayPage() {
       </footer>
     </main>
   );
-}
-
-function EntryCard({ entry }: { entry: EntryRow }) {
-  const timeLabel = new Date(entry.eaten_at).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
-  return (
-    <li className="group relative overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-950">
-        {entry.photo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={entry.photo_url}
-            alt={entry.user_note ?? "Meal photo"}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
-            photo expired
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-1 p-2.5 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-zinc-500">{timeLabel}</span>
-          <StatusBadge status={entry.status} />
-        </div>
-        {entry.status === "rejected" && entry.rejection_reason && (
-          <p className="line-clamp-2 text-zinc-500 dark:text-zinc-400">
-            {entry.rejection_reason}
-          </p>
-        )}
-        {entry.photo_expires_at && entry.photo_url && (
-          <p className="text-[10px] text-zinc-400">
-            {expiresInLabel(entry.photo_expires_at)}
-          </p>
-        )}
-        {entry.user_note && (
-          <p className="line-clamp-2 text-zinc-600 dark:text-zinc-300">
-            {entry.user_note}
-          </p>
-        )}
-      </div>
-
-      <DeleteEntryButton entryId={entry.id} />
-    </li>
-  );
-}
-
-function StatusBadge({ status }: { status: EntryRow["status"] }) {
-  if (status === "pending") {
-    return (
-      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
-        Analyzing…
-      </span>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-500/20 dark:text-red-200">
-        Failed
-      </span>
-    );
-  }
-  if (status === "rejected") {
-    return (
-      <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200">
-        Not food
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200">
-      Analyzed
-    </span>
-  );
-}
-
-function expiresInLabel(isoExpiresAt: string): string {
-  const ms = new Date(isoExpiresAt).getTime() - Date.now();
-  if (ms <= 0) return "photo expiring";
-  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
-  const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-  const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
-  if (days > 0) return `photo will be removed in ${days}d ${hours}h`;
-  if (hours > 0) return `photo will be removed in ${hours}h ${minutes}m`;
-  return `photo will be removed in ${minutes}m`;
 }
