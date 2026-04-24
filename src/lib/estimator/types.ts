@@ -56,6 +56,7 @@ export type AnalyzeRejected = {
 export type AnalyzeResult = AnalyzeOk | AnalyzeRejected;
 
 export interface NutritionEstimator {
+  /** Photo path: image + optional user hint. */
   analyze(input: {
     /** Publicly-fetchable URL (signed, short TTL). The adapter is
      *  responsible for downloading + base64-encoding if the underlying
@@ -64,5 +65,18 @@ export interface NutritionEstimator {
     /** Optional free-text hint from the user, e.g. "this is a half
      *  portion" or "the sauce is soy ginger". */
     userNote?: string;
+  }): Promise<AnalyzeResult>;
+
+  /**
+   * Text path: the user typed a description of the meal and didn't
+   * attach a photo. Same result shape, but the adapter uses the
+   * text-only system prompt and the `confidence` field is capped at
+   * "medium" by the prompt (since there's no image to verify against).
+   */
+  analyzeText(input: {
+    /** The user's meal description. Treated as authoritative — the model
+     *  should use the portion language they gave rather than second-
+     *  guessing it. */
+    description: string;
   }): Promise<AnalyzeResult>;
 }

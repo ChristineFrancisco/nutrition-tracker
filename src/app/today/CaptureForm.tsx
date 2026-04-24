@@ -13,7 +13,15 @@ type Phase =
   | "saved"
   | "error";
 
-export default function CaptureForm({ userId }: { userId: string }) {
+export default function CaptureForm({
+  userId,
+  onCancel,
+  onSaved,
+}: {
+  userId: string;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -47,12 +55,16 @@ export default function CaptureForm({ userId }: { userId: string }) {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  function reset() {
+  // Discard = clear the form AND tell the orchestrator to collapse back
+  // to the chooser. Picking a different photo is done via the file input
+  // directly, so we don't need a "clear only" affordance.
+  function discard() {
     setFile(null);
     setNote("");
     setPhase("idle");
     setErrorMsg(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    onCancel();
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -87,17 +99,15 @@ export default function CaptureForm({ userId }: { userId: string }) {
       form.set("user_note", note);
       const { entryId } = await createEntry(form);
 
-      // Success — reset for the next capture. createEntry has already
-      // called revalidatePath("/today"), so the pending card appears on
-      // the next render cycle. Briefly show a "saved" state so the
-      // interaction feels confirmed.
+      // Success — createEntry has already called revalidatePath("/today"),
+      // so the pending card appears on the next render cycle. Hand control
+      // back to the AddEntry orchestrator, which will collapse us back to
+      // the closed state.
       setPhase("saved");
       setFile(null);
       setNote("");
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setTimeout(() => {
-        setPhase((p) => (p === "saved" ? "idle" : p));
-      }, 2000);
+      onSaved();
 
       // Kick off AI analysis without awaiting. The HTTP POST stays open
       // until the server action completes (5–15s on Gemini Flash), at
@@ -129,11 +139,23 @@ export default function CaptureForm({ userId }: { userId: string }) {
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold">Snap a meal</h2>
-      <p className="mt-1 text-sm text-zinc-500">
-        Take a photo of what you&apos;re eating — we&apos;ll identify it and
-        estimate nutrition.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Snap a meal</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Take a photo of what you&apos;re eating — we&apos;ll identify it
+            and estimate nutrition.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="shrink-0 rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          ← Back
+        </button>
+      </div>
 
       {!isOnline && (
         <div
@@ -142,15 +164,6 @@ export default function CaptureForm({ userId }: { userId: string }) {
         >
           You&apos;re offline. Nutrition analysis runs on our server, so
           capture is paused until you reconnect.
-        </div>
-      )}
-
-      {phase === "saved" && (
-        <div
-          role="status"
-          className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200"
-        >
-          Entry saved — analyzing nutrition…
         </div>
       )}
 
@@ -247,7 +260,7 @@ export default function CaptureForm({ userId }: { userId: string }) {
               </button>
               <button
                 type="button"
-                onClick={reset}
+                onClick={discard}
                 disabled={busy}
                 className="rounded-lg border border-zinc-300 px-4 py-2.5 text-sm transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
               >

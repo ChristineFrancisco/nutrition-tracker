@@ -90,6 +90,52 @@ export async function createEntry(
 }
 
 /**
+ * Text-only counterpart to createEntry. No photo: the description in
+ * user_note IS the analyzable payload. entry_type is flipped to 'text'
+ * so `analyzeEntry` routes to the text prompt instead of expecting an
+ * image.
+ *
+ * Minimum length guardrail (10 chars) sits on the server so a curl'd
+ * request can't bypass the client-side check.
+ */
+export async function createTextEntry(
+  formData: FormData
+): Promise<{ entryId: string }> {
+  const descriptionRaw = String(formData.get("description") ?? "").trim();
+  if (!descriptionRaw) throw new Error("Missing description.");
+  if (descriptionRaw.length < 10) {
+    throw new Error(
+      "Please give a bit more detail about the meal (at least 10 characters)."
+    );
+  }
+  const description = descriptionRaw.slice(0, 1000);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from("entries")
+    .insert({
+      user_id: user.id,
+      entry_type: "text",
+      user_note: description,
+      status: "pending",
+    })
+    .select("id")
+    .single();
+  if (insertErr || !inserted)
+    throw new Error(
+      `Create entry failed: ${insertErr?.message ?? "no row returned"}`
+    );
+
+  revalidatePath("/today");
+  return { entryId: inserted.id };
+}
+
+/**
  * Kick off AI analysis for a previously-created entry. Idempotent in the
  * sense that a row that's already non-pending is left alone — the client
  * can safely retry if the connection drops mid-call.
@@ -124,15 +170,22 @@ export async function analyzeEntry(entryId: string): Promise<void> {
   // doesn't double-charge.
   const { data: entry, error: entryErr } = await supabase
     .from("entries")
-    .select("id, photo_path, user_note, status")
+    .select("id, entry_type, photo_path, user_note, status")
     .eq("id", entryId)
     .eq("user_id", user.id)
     .maybeSingle();
   if (entryErr) throw new Error(`Load entry failed: ${entryErr.message}`);
   if (!entry) return; // deleted or RLS filtered — nothing to do
   if (entry.status === "analyzed" || entry.status === "rejected") return;
-  if (!entry.photo_path) {
+  // Photo entries need an accessible image; text entries need the note.
+  // If either is missing for the respective type, bail out as failed so
+  // we don't consume a model call on a broken row.
+  if (entry.entry_type === "photo" && !entry.photo_path) {
     await markFailed(entryId, user.id, "Photo is missing.");
+    return;
+  }
+  if (entry.entry_type === "text" && !entry.user_note) {
+    await markFailed(entryId, user.id, "Description is missing.");
     return;
   }
   if (entry.status === "failed") {
@@ -163,26 +216,31 @@ export async function analyzeEntry(entryId: string): Promise<void> {
     return;
   }
 
-  // ---- Sign a short-lived URL for the model to fetch ----
-  const { data: signed, error: signErr } = await supabase.storage
-    .from("food-photos")
-    .createSignedUrl(entry.photo_path, ANALYZE_SIGNED_URL_TTL_SECONDS);
-  if (signErr || !signed) {
-    await markFailed(
-      entryId,
-      user.id,
-      `Could not sign photo URL: ${signErr?.message ?? "no url"}`
-    );
-    return;
-  }
-
-  // ---- Call the estimator ----
+  // ---- Call the estimator (photo or text path) ----
   let result: AnalyzeResult;
   try {
-    result = await getEstimator().analyze({
-      imageUrl: signed.signedUrl,
-      userNote: entry.user_note ?? undefined,
-    });
+    if (entry.entry_type === "text") {
+      result = await getEstimator().analyzeText({
+        description: entry.user_note!, // presence checked above
+      });
+    } else {
+      // Photo path: sign a short-lived URL for the model to fetch.
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("food-photos")
+        .createSignedUrl(entry.photo_path!, ANALYZE_SIGNED_URL_TTL_SECONDS);
+      if (signErr || !signed) {
+        await markFailed(
+          entryId,
+          user.id,
+          `Could not sign photo URL: ${signErr?.message ?? "no url"}`
+        );
+        return;
+      }
+      result = await getEstimator().analyze({
+        imageUrl: signed.signedUrl,
+        userNote: entry.user_note ?? undefined,
+      });
+    }
   } catch (err) {
     await markFailed(
       entryId,
@@ -269,6 +327,88 @@ export async function analyzeEntry(entryId: string): Promise<void> {
 export async function retryAnalyzeEntry(formData: FormData): Promise<void> {
   const entryId = String(formData.get("entry_id") ?? "").trim();
   if (!entryId) throw new Error("Missing entry id.");
+  await analyzeEntry(entryId);
+}
+
+/**
+ * Refine an already-analyzed (or rejected) entry: the user edited their
+ * description after seeing what the AI identified — e.g. "exclude the
+ * lemons and limes in the background" — and now wants the model to
+ * take another pass. We reset the entry to a clean pending state,
+ * drop the old entry_items, and re-run `analyzeEntry`.
+ *
+ * Allowed source statuses: `analyzed`, `rejected`, `failed`. We block
+ * refine while `pending` because a concurrent analyze call would race
+ * with this update.
+ *
+ * The refine counts against the daily cap like any other analysis —
+ * that's enforced inside analyzeEntry itself.
+ */
+export async function refineEntry(formData: FormData): Promise<void> {
+  const entryId = String(formData.get("entry_id") ?? "").trim();
+  const descriptionRaw = String(formData.get("description") ?? "").trim();
+  if (!entryId) throw new Error("Missing entry id.");
+  if (!descriptionRaw) {
+    throw new Error("Add at least a short description before re-analyzing.");
+  }
+  // Match the text-entry minimum so the prompt has something to work
+  // with — on photo entries the image still carries most of the signal,
+  // but there's no good reason to let the note go blank on refine.
+  if (descriptionRaw.length < 10) {
+    throw new Error(
+      "Please give a bit more detail (at least 10 characters)."
+    );
+  }
+  const description = descriptionRaw.slice(0, 1000);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // Load + ownership-check + status gate in one query.
+  const { data: entry, error: entryErr } = await supabase
+    .from("entries")
+    .select("id, status")
+    .eq("id", entryId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (entryErr) throw new Error(`Load entry failed: ${entryErr.message}`);
+  if (!entry) throw new Error("Entry not found.");
+  if (entry.status === "pending") {
+    throw new Error(
+      "Analysis is already in progress for this entry — please wait for it to finish."
+    );
+  }
+
+  // Drop the previous run's items so the UI doesn't briefly show stale
+  // data mixed with the new analysis. RLS on entry_items already limits
+  // deletes to the owner of the parent entry.
+  const { error: delItemsErr } = await supabase
+    .from("entry_items")
+    .delete()
+    .eq("entry_id", entryId);
+  if (delItemsErr) {
+    throw new Error(`Clear previous items failed: ${delItemsErr.message}`);
+  }
+
+  // Reset the entry to pending with the new note and blank out the
+  // previous run's notes/rejection. `analyzeEntry` will pick it up from
+  // here exactly like a fresh pending row.
+  const { error: updErr } = await supabase
+    .from("entries")
+    .update({
+      user_note: description,
+      status: "pending",
+      model_notes: null,
+      rejection_reason: null,
+    })
+    .eq("id", entryId)
+    .eq("user_id", user.id);
+  if (updErr) throw new Error(`Reset entry failed: ${updErr.message}`);
+
+  revalidatePath("/today");
   await analyzeEntry(entryId);
 }
 

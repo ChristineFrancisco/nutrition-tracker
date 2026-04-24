@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentProfile, getLatestGoals } from "@/lib/profile";
 import { getTodayEntries } from "@/lib/entries";
-import CaptureForm from "./CaptureForm";
+import AddEntry from "./AddEntry";
 import EntryCard from "./EntryCard";
 
 export default async function TodayPage() {
@@ -68,7 +68,7 @@ export default async function TodayPage() {
         </nav>
       </header>
 
-      <CaptureForm userId={profile.id} />
+      <AddEntry userId={profile.id} />
 
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">

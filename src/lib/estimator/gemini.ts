@@ -20,7 +20,10 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { AnalyzeResultSchema } from "./schema";
-import { ESTIMATOR_SYSTEM_PROMPT } from "./prompt";
+import {
+  PHOTO_ESTIMATOR_SYSTEM_PROMPT,
+  TEXT_ESTIMATOR_SYSTEM_PROMPT,
+} from "./prompt";
 import type { AnalyzeResult, NutritionEstimator } from "./types";
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -91,7 +94,7 @@ export class GeminiEstimator implements NutritionEstimator {
         // mid-object. Our system prompt is deterministic and the schema
         // is strict — we don't need reflection, just structured output.
         config: {
-          systemInstruction: ESTIMATOR_SYSTEM_PROMPT,
+          systemInstruction: PHOTO_ESTIMATOR_SYSTEM_PROMPT,
           responseMimeType: "application/json",
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           thinkingConfig: { thinkingBudget: 0 },
@@ -122,6 +125,75 @@ export class GeminiEstimator implements NutritionEstimator {
     // mid-JSON. Call that out explicitly instead of surfacing a generic
     // "invalid JSON" parse error — lets us (or a future reader) spot the
     // real cause at a glance.
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason === "MAX_TOKENS") {
+      throw new Error(
+        `Model response truncated at maxOutputTokens (${MAX_OUTPUT_TOKENS}). ` +
+          `Raise MAX_OUTPUT_TOKENS in gemini.ts or check thinkingBudget.`
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawJson);
+    } catch (err) {
+      throw new Error(
+        `Model returned invalid JSON: ${(err as Error).message}. ` +
+          `Raw response (first 200 chars): ${rawJson.slice(0, 200)}`
+      );
+    }
+
+    const result = AnalyzeResultSchema.safeParse(parsed);
+    if (!result.success) {
+      throw new Error(
+        `Model JSON did not match schema: ${result.error.message}`
+      );
+    }
+    return result.data;
+  }
+
+  /**
+   * Text-only analysis path. Same output shape as `analyze`, same retry
+   * and truncation handling — only the system prompt and the absence of
+   * an image part differ. We skip image fetch/base64 entirely, and the
+   * text prompt caps per-item confidence at "medium" since there's no
+   * visual to verify against.
+   */
+  async analyzeText(input: { description: string }): Promise<AnalyzeResult> {
+    const description = input.description.trim();
+    if (!description) {
+      // Defensive: the server action validates this too, but double-check
+      // so we don't waste a Gemini call on an empty string.
+      throw new Error("Description is empty.");
+    }
+
+    const response = await this.callWithRetry(async () =>
+      this.client.models.generateContent({
+        model: this.model,
+        config: {
+          systemInstruction: TEXT_ESTIMATOR_SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `User description of the meal:\n${description}\n\nAnalyze this meal.`,
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    const rawJson = (response.text ?? "").trim();
+    if (!rawJson) {
+      throw new Error("Model returned no text content.");
+    }
+
     const finishReason = response.candidates?.[0]?.finishReason;
     if (finishReason === "MAX_TOKENS") {
       throw new Error(

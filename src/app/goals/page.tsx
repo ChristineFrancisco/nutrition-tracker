@@ -7,6 +7,7 @@ import {
   type NutrientKey,
 } from "@/lib/targets/types";
 import { switchToGeneric } from "./actions";
+import OmittedNutrientsModal from "./OmittedNutrientsModal";
 
 export default async function GoalsPage({
   searchParams,
@@ -164,9 +165,12 @@ export default async function GoalsPage({
         ))}
       </div>
 
-      <footer className="mt-8 text-xs text-zinc-400">
-        Numbers with a <span className="font-medium">limit</span> tag are
-        ceilings — stay under these. All other values are targets to hit.
+      <footer className="mt-8 space-y-4">
+        <p className="text-xs text-zinc-400">
+          Numbers with a <span className="font-medium">limit</span> tag are
+          ceilings — stay under these. All other values are targets to hit.
+        </p>
+        <OmittedNutrientsModal />
       </footer>
     </main>
   );
