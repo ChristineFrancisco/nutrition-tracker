@@ -26,6 +26,10 @@ const ANALYZE_SIGNED_URL_TTL_SECONDS = 300;
  * (defaulted to 168h = 7 days). A future cron job nulls out photo_path
  * and removes the underlying Storage object once the entry expires.
  *
+ * If the form includes an `eaten_on` field (YYYY-MM-DD) we backdate the
+ * entry to that local calendar day at the current time-of-day. See
+ * `parseEatenOnFromForm` for the rationale.
+ *
  * Returns the new entry's id so the client can immediately kick off
  * `analyzeEntry` against it.
  */
@@ -35,6 +39,7 @@ export async function createEntry(
   const photoPath = String(formData.get("photo_path") ?? "").trim();
   const userNoteRaw = String(formData.get("user_note") ?? "").trim();
   const user_note = userNoteRaw === "" ? null : userNoteRaw.slice(0, 500);
+  const eatenOn = parseEatenOnFromForm(formData);
 
   if (!photoPath) throw new Error("Missing photo path.");
 
@@ -71,6 +76,7 @@ export async function createEntry(
       photo_expires_at: photoExpiresAt,
       user_note,
       status: "pending",
+      ...(eatenOn ? { eaten_at: eatenOn.eatenAt } : {}),
     })
     .select("id")
     .single();
@@ -85,6 +91,7 @@ export async function createEntry(
   // NEXT_REDIRECT sentinel here would look like an error to the client's
   // try/catch.
   revalidatePath("/today");
+  if (eatenOn) revalidatePath(`/history/${eatenOn.dateKey}`);
 
   return { entryId: inserted.id };
 }
@@ -109,6 +116,7 @@ export async function createTextEntry(
     );
   }
   const description = descriptionRaw.slice(0, 1000);
+  const eatenOn = parseEatenOnFromForm(formData);
 
   const supabase = await createClient();
   const {
@@ -123,6 +131,7 @@ export async function createTextEntry(
       entry_type: "text",
       user_note: description,
       status: "pending",
+      ...(eatenOn ? { eaten_at: eatenOn.eatenAt } : {}),
     })
     .select("id")
     .single();
@@ -132,6 +141,7 @@ export async function createTextEntry(
     );
 
   revalidatePath("/today");
+  if (eatenOn) revalidatePath(`/history/${eatenOn.dateKey}`);
   return { entryId: inserted.id };
 }
 
@@ -485,6 +495,71 @@ function sumItemNutrients(items: EstimatedItem[]): Nutrients {
     }
   }
   return totals;
+}
+
+/**
+ * Parse an optional `eaten_on` form field (YYYY-MM-DD local date) into
+ * an `eaten_at` ISO timestamp + the canonical date key. Returns null if
+ * the field is absent (the caller should let the DB default `eaten_at`
+ * to now()).
+ *
+ * Composition: the past date at the user's CURRENT local time-of-day.
+ *  - Successive entries on the same past date get unique-ish timestamps
+ *    so the feed (ordered by eaten_at desc) keeps a sensible order
+ *    instead of bunching everything at midnight in arbitrary insertion
+ *    order.
+ *  - We don't surface a time picker in v1 — the user said "I had this
+ *    yesterday", not "I had this at 6:42 PM yesterday". This is the
+ *    cheapest approximation that doesn't lose ordering information.
+ *
+ * Rejects future dates and malformed input. Same strict YYYY-MM-DD
+ * regex as `parseLocalDateString` on the history page so the two guards
+ * agree on what's valid. Today is allowed (the form may post from /today
+ * with the current date for whatever reason — same as omitting the
+ * field).
+ */
+function parseEatenOnFromForm(
+  formData: FormData
+): { eatenAt: string; dateKey: string } | null {
+  const raw = String(formData.get("eaten_on") ?? "").trim();
+  if (!raw) return null;
+
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) throw new Error("Invalid date.");
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+
+  const now = new Date();
+  const composed = new Date(
+    year,
+    month - 1,
+    day,
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds()
+  );
+
+  // Guard against roll-overs (Feb 30 → Mar 2) — the regex doesn't catch
+  // impossible dates, only the wrong shape.
+  if (
+    composed.getFullYear() !== year ||
+    composed.getMonth() !== month - 1 ||
+    composed.getDate() !== day
+  ) {
+    throw new Error("Invalid date.");
+  }
+
+  // Reject future dates. Compare against end-of-today so the user's
+  // "today" wins even if there's a small clock skew.
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+  if (composed.getTime() > todayEnd.getTime()) {
+    throw new Error("Cannot log entries for future dates.");
+  }
+
+  return { eatenAt: composed.toISOString(), dateKey: `${m[1]}-${m[2]}-${m[3]}` };
 }
 
 /** Compose a short model_notes string that includes the model's summary

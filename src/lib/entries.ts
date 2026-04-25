@@ -47,32 +47,63 @@ export type EntryRow = {
 const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour — plenty for a page render.
 
 /**
- * Load today's entries for the signed-in user and attach freshly-signed
- * Storage URLs for any photos that haven't expired yet.
+ * Return the [start, end) timestamps that bound a single local-calendar
+ * day, where `day` is the date of interest. `end` is the next day's 00:00,
+ * so Postgres range filters should use `>= start AND < end`.
+ *
+ * Computed in the Node process's local timezone. On your laptop that's
+ * your wall-clock tz; on Vercel it defaults to UTC, which would drift
+ * from the user's actual day — fix that later with a `profiles.timezone`
+ * column (populated from `Intl.DateTimeFormat().resolvedOptions().timeZone`
+ * at sign-up) and doing the boundary math from that.
+ */
+export function dayBoundaries(day: Date): { start: Date; end: Date } {
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+/**
+ * Return the [start, end) timestamps that bound the local calendar
+ * month containing `day`. `start` is the 1st at 00:00 local time; `end`
+ * is the 1st of the next month at 00:00. Same caveat about tz as
+ * dayBoundaries applies.
+ */
+export function monthBoundaries(day: Date): { start: Date; end: Date } {
+  const start = new Date(day.getFullYear(), day.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+  return { start, end };
+}
+
+/** YYYY-MM-DD in the Node process's local timezone. */
+export function formatLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Load entries for a specific local calendar day for the signed-in user
+ * and attach freshly-signed Storage URLs for any photos that haven't
+ * expired yet.
  *
  * Uses PostgREST's nested-select syntax to pull each entry's
  * `entry_items` in the same roundtrip. The items are small (usually
  * 1-5 per entry) and only two short text fields each, so pulling them
  * always is cheaper than a per-entry fetch on expand.
- *
- * "Today" is computed in the Node.js process's local timezone. On your
- * laptop that's your wall-clock tz; on Vercel it defaults to UTC, which
- * would drift from the user's actual "today" — fix that later by adding
- * a `profiles.timezone` column (populated from
- * `Intl.DateTimeFormat().resolvedOptions().timeZone` at sign-up) and
- * computing the boundary from it.
  */
-export async function getTodayEntries(): Promise<EntryRow[]> {
+export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  // Use local time on purpose — setUTCHours would cut off entries made
-  // earlier today whenever the UTC day has already rolled over.
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const { start, end } = dayBoundaries(day);
 
   const { data, error } = await supabase
     .from("entries")
@@ -80,7 +111,8 @@ export async function getTodayEntries(): Promise<EntryRow[]> {
       "id, eaten_at, entry_type, photo_path, photo_expires_at, user_note, status, rejection_reason, model_notes, entry_items(id, name, estimated_serving, confidence, reasoning, created_at)"
     )
     .eq("user_id", user.id)
-    .gte("eaten_at", startOfDay.toISOString())
+    .gte("eaten_at", start.toISOString())
+    .lt("eaten_at", end.toISOString())
     .order("eaten_at", { ascending: false });
 
   if (error) throw new Error(`Load entries failed: ${error.message}`);
@@ -132,4 +164,13 @@ export async function getTodayEntries(): Promise<EntryRow[]> {
   );
 
   return withUrls as EntryRow[];
+}
+
+/**
+ * Thin wrapper: today's entries. Kept separate so call sites that mean
+ * "today" read as such, and so we don't have to pass `new Date()` at
+ * every call.
+ */
+export async function getTodayEntries(): Promise<EntryRow[]> {
+  return getEntriesForDate(new Date());
 }

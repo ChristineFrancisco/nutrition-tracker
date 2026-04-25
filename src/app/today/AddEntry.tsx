@@ -24,14 +24,29 @@ type Mode = "closed" | "choose" | "photo" | "text";
  *  - The chooser uses large tap targets styled as two cards rather
  *    than a modal or dropdown: this is a mobile-first app and the
  *    photo/text choice is the primary action on the page.
+ *
+ * `eatenAtDate` is an optional YYYY-MM-DD local-calendar date. When set,
+ * the sub-forms forward it as `eaten_on` in the server action's
+ * formData, which backdates the entry to that day at the current
+ * time-of-day. The /history/[date] page passes this to support logging
+ * meals onto a past date; /today omits it so the DB default (now())
+ * applies.
  */
-export default function AddEntry({ userId }: { userId: string }) {
+export default function AddEntry({
+  userId,
+  eatenAtDate,
+}: {
+  userId: string;
+  eatenAtDate?: string;
+}) {
   const [mode, setMode] = useState<Mode>("closed");
+  const isPast = Boolean(eatenAtDate);
 
   if (mode === "photo") {
     return (
       <CaptureForm
         userId={userId}
+        eatenAtDate={eatenAtDate}
         onCancel={() => setMode("choose")}
         onSaved={() => setMode("closed")}
       />
@@ -41,6 +56,7 @@ export default function AddEntry({ userId }: { userId: string }) {
   if (mode === "text") {
     return (
       <TextEntryForm
+        eatenAtDate={eatenAtDate}
         onCancel={() => setMode("choose")}
         onSaved={() => setMode("closed")}
       />
@@ -54,8 +70,9 @@ export default function AddEntry({ userId }: { userId: string }) {
           <div>
             <h2 className="text-lg font-semibold">How are you logging?</h2>
             <p className="mt-1 text-sm text-zinc-500">
-              A photo gives the most accurate estimate. Typing works if you
-              don&apos;t have one.
+              {isPast
+                ? "We'll log this to the day you're viewing — pick a method below."
+                : "A photo gives the most accurate estimate. Typing works if you don't have one."}
             </p>
           </div>
           <button
@@ -114,10 +131,12 @@ export default function AddEntry({ userId }: { userId: string }) {
         <span className="text-base" aria-hidden>
           +
         </span>
-        Add an entry
+        {isPast ? "Add an entry to this day" : "Add an entry"}
       </button>
       <p className="mt-2 text-center text-xs text-zinc-400">
-        Snap a photo or describe your meal in text.
+        {isPast
+          ? "Backfill a meal you forgot to log."
+          : "Snap a photo or describe your meal in text."}
       </p>
     </section>
   );

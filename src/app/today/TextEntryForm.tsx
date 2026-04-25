@@ -25,9 +25,12 @@ type Phase = "idle" | "saving" | "saved" | "error";
  * forms and they'll drift as each grows its own affordances.
  */
 export default function TextEntryForm({
+  eatenAtDate,
   onCancel,
   onSaved,
 }: {
+  /** When set (YYYY-MM-DD local), the entry is backdated to that day. */
+  eatenAtDate?: string;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -69,6 +72,7 @@ export default function TextEntryForm({
       setPhase("saving");
       const form = new FormData();
       form.set("description", description.trim());
+      if (eatenAtDate) form.set("eaten_on", eatenAtDate);
       const { entryId } = await createTextEntry(form);
 
       setPhase("saved");
@@ -94,8 +98,9 @@ export default function TextEntryForm({
         <div>
           <h2 className="text-lg font-semibold">Describe your meal</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Type what you ate — we&apos;ll estimate nutrition from your
-            description. No photo needed.
+            {eatenAtDate
+              ? "Type what you ate on this day — we'll estimate nutrition from your description."
+              : "Type what you ate — we'll estimate nutrition from your description. No photo needed."}
           </p>
         </div>
         <button

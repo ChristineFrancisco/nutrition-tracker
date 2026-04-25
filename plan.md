@@ -154,6 +154,8 @@ The choice is stored on the profile and can be switched later in Settings. Switc
 
 The UI labels every target with its source ("FDA generic" or "Personalized DRI") so the user always knows what they're being measured against. Recomputed when the profile changes; stored snapshot in `daily_goals` so historical reports aren't retroactively rewritten when the user updates their profile.
 
+A subset of vitamins and minerals also carries a **Tolerable Upper Intake Level (UL)** — the daily intake above which toxicity risk becomes meaningful. ULs sit alongside targets and ceilings as a third tier of the targets system and drive a separate "Excess intake" warning surface. See §15.
+
 ## 7. Screens
 
 1. **Onboarding / profile** — collect profile, show computed targets, let user override.
@@ -272,6 +274,84 @@ Numbers above are Google's published rates as of early 2026 — verify on the Ge
 - **Offline.** No offline support in v1. See §9 — the UI clearly tells the user they need to be online to log entries.
 - **Multi-device.** Supabase Auth handles this naturally; sign in on any device and data syncs.
 
-## 15. Not in scope for v1
+## 15. Upper intake limits & overdose warnings
+
+Some vitamins and minerals are toxic in excess — usually only when supplements or fortified foods stack with diet. The Institute of Medicine publishes a **Tolerable Upper Intake Level (UL)** for each: the highest daily intake unlikely to cause harm. We surface ULs distinct from the existing "ceiling" semantic so the user gets a clear, actionable warning when an entry pushes them past a known toxicity threshold, rather than burying it next to the soft sodium/sat-fat caps.
+
+### How UL differs from "ceiling"
+
+The current model has two semantics:
+
+- **`target`** — aim for at least this much (protein, fiber, vitamin D, etc.). Going under is a miss; going over is fine.
+- **`ceiling`** — keep below this much, ideally (sodium, saturated fat, added sugar). Going over fires a "Watch" chip — soft, advisory.
+
+ULs are a third tier:
+
+- **`upper_limit`** — going over crosses into a known-harmful range. A nutrient can have **both** a target and a UL: iron's RDA for adult women is 18 mg, the UL is 45 mg — it's normal and good to be between them; "Excess" only fires above 45.
+
+The "Watch" chip on a ceiling means "tipped over a soft cap." A new "Excess" callout above a UL means "you've taken in more than is considered safe today." Different language, different color (red vs amber), and prioritized above the Watch list on the page.
+
+### Nutrients in scope
+
+ULs that matter most in practice — i.e. ones supplements or fortified foods can realistically push past:
+
+- **Vitamin A (preformed, retinol)** — 3000 mcg RAE. Birth-defect and liver-toxicity risk. Distinct from beta-carotene, which has no UL.
+- **Vitamin D** — 100 mcg (4000 IU). Hypercalcemia risk above this.
+- **Vitamin E** — 1000 mg α-tocopherol. Bleeding risk.
+- **Vitamin B6** — 100 mg. Peripheral neuropathy from chronic excess.
+- **Niacin (B3)** — 35 mg of *added/synthetic* niacin only. Flushing, liver toxicity. Food niacin is uncapped.
+- **Folate (folic acid)** — 1000 mcg of *synthetic* folic acid only. Masks B12 deficiency. Food folate is uncapped.
+- **Iron** — 45 mg.
+- **Zinc** — 40 mg. Chronic excess causes copper deficiency.
+- **Selenium** — 400 mcg.
+- **Calcium** — 2500 mg (adults <50) / 2000 mg (50+). Kidney-stone and hypercalcemia risk.
+- **Magnesium** — 350 mg of *supplemental* magnesium only. Diarrhea/cramping. Food magnesium is uncapped.
+- **Choline** — 3500 mg.
+
+Vitamin C, vitamin K, B12, biotin, riboflavin, thiamin, pantothenic acid, manganese, copper, phosphorus, potassium have either no established UL or one so high that diet alone won't reach it; we don't surface a UL warning for those. Sodium stays a ceiling (2300 mg) — it's a long-term cardiovascular risk, not an acute toxicity, so the existing Watch language fits better.
+
+### Data model
+
+Extend the targets module to carry `upper_limit_*` for each nutrient that has one. Two flavors:
+
+- **Total UL** — the warning fires off `totals[k]` directly. Most ULs work this way (vitamin A retinol, D, E, B6, iron, zinc, selenium, calcium, choline).
+- **Source-restricted UL** — niacin, folic acid, and supplemental magnesium ULs apply to *added* / *synthetic* / *supplemental* intake only. For v1 we don't distinguish source in the data model. We apply the UL to the total and the warning copy notes that "supplements drive most of this — food sources alone usually don't reach this level." Later, we add an `is_supplement` flag (or a `source_kind` enum) on `entry_items` so the estimator can mark synthetic-source items and we sum those separately.
+
+The DRI table extends naturally: where the existing fields specify the target, add the UL alongside. Generic FDA mode uses the same UL values (they're not personalized below the age band for most, except calcium, where the UL drops from 2500 to 2000 mg at age 50).
+
+### UI surface
+
+**Today / day view:**
+
+- An "Excess intake" callout sits above the existing "Watch" chips when at least one UL is exceeded. Visually distinct: red border, alert icon, plain-language risk per nutrient (*"Iron — 51 mg of 45 mg upper safe limit. Chronic excess can cause GI distress and, over time, organ damage."*).
+- The vitamin-grid bars get a fourth color tier above the UL: emerald-300/500/600 below it, then a red overflow segment for the part that crosses past. The bar visually "spills over" past the UL line so the user reads the magnitude at a glance.
+- Nutrients with both a target and a UL show two reference ticks on their bar: the target tick and the UL tick, with the safe range between them shaded.
+
+**History / month view:**
+
+- Calendar cells get a small red dot in the corner on any day where a UL was exceeded (mirrors the existing low-confidence ⚠ marker, distinct color).
+- The day view header includes a UL summary alongside the existing scorecard.
+- Range view (when built) adds a per-nutrient "Days over upper limit" count.
+
+**Entry detail / refine:**
+
+- If a single item pushes a nutrient over its UL, surface a contextual hint on that item (*"This supplement contributes 200% DV of B6 — that's a heavy single dose."*). Helps the user decide whether to refine ("…actually only half a tablet") rather than ignoring the warning.
+
+### Milestone
+
+New **M8 — Upper-limit safety.** Slots after the current M7 polish work.
+
+- Extend the targets module with `upper_limit_*` fields; update the FDA generic table and the DRI tables.
+- Add `computeExcesses(totals, goals)` next to `computeHighlights` in `lib/totals.ts`, returning the same `Highlight[]` shape but for UL crossings.
+- Build the "Excess intake" callout component; thread it through Today, day view, and (eventually) range view.
+- Add the bar-overflow rendering tier in DailyTotals (target/limit/excess).
+- Add the red corner dot in the month view's calendar cells.
+- Document the source-restricted-nutrient caveat in user-visible copy on Goals page so the user understands why the warning fires (or doesn't) on niacin/folate/magnesium.
+
+### Open question for later
+
+Single-day vs chronic. A single 60-mg-iron day is fine for almost everyone; ten days in a row is not. The clinically meaningful signal is the trend, not the spike. Once the range view exists we add a "N days in last 7 over UL" chip — that's the chronic-exposure indicator. v1 of this feature warns per-day with copy that gently notes a single high day isn't usually harmful but the pattern matters.
+
+## 16. Not in scope for v1
 
 Barcode scanning, recipe library / meal templates, water tracking, exercise logging, multi-user households, export to Apple Health / Google Fit, social sharing. All are reasonable v2 candidates.

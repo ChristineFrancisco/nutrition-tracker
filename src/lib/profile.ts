@@ -70,15 +70,71 @@ export async function getLatestGoals(): Promise<Nutrients | null> {
   if (error) throw new Error(`Load goals failed: ${error.message}`);
   if (!data) return null;
 
-  // Strip metadata columns so we return a pure Nutrients shape.
+  return stripGoalMetadata(data as Record<string, unknown>);
+}
+
+/**
+ * Fetch the goals snapshot that was in effect on a given local calendar
+ * day — i.e. the most recent snapshot whose `effective_from` is on or
+ * before the end of that day. This is what history views should use so
+ * past totals aren't retroactively compared against today's targets.
+ *
+ * If no snapshot was in effect yet on that date, we fall back to the
+ * earliest snapshot rather than returning null — that's the right thing
+ * for "you logged something on day 0, before we had your goals" edge
+ * cases; better to show something than throw a not-found.
+ */
+export async function getGoalsEffectiveOn(
+  day: Date
+): Promise<Nutrients | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const endOfDay = new Date(day);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // Most-recent snapshot at or before end-of-day.
+  const { data, error } = await supabase
+    .from("daily_goals")
+    .select("*")
+    .eq("user_id", user.id)
+    .lte("effective_from", endOfDay.toISOString())
+    .order("effective_from", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Load goals failed: ${error.message}`);
+  if (data) return stripGoalMetadata(data as Record<string, unknown>);
+
+  // Nothing was in effect yet — fall back to the earliest ever snapshot
+  // so the history page still renders sensibly.
+  const { data: fallback, error: fbErr } = await supabase
+    .from("daily_goals")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("effective_from", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (fbErr) throw new Error(`Load goals failed: ${fbErr.message}`);
+  if (!fallback) return null;
+  return stripGoalMetadata(fallback as Record<string, unknown>);
+}
+
+/** Strip the metadata columns so we return a pure Nutrients shape. */
+function stripGoalMetadata(row: Record<string, unknown>): Nutrients {
   const {
     id: _id,
     user_id: _uid,
     effective_from: _eff,
+    effective_date: _effd,
     source: _src,
     created_at: _cr,
     ...nutrients
-  } = data as Record<string, unknown>;
+  } = row;
   return nutrients as unknown as Nutrients;
 }
 

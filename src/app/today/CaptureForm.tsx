@@ -15,10 +15,13 @@ type Phase =
 
 export default function CaptureForm({
   userId,
+  eatenAtDate,
   onCancel,
   onSaved,
 }: {
   userId: string;
+  /** When set (YYYY-MM-DD local), the entry is backdated to that day. */
+  eatenAtDate?: string;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -97,6 +100,7 @@ export default function CaptureForm({
       const form = new FormData();
       form.set("photo_path", path);
       form.set("user_note", note);
+      if (eatenAtDate) form.set("eaten_on", eatenAtDate);
       const { entryId } = await createEntry(form);
 
       // Success — createEntry has already called revalidatePath("/today"),
@@ -143,8 +147,9 @@ export default function CaptureForm({
         <div>
           <h2 className="text-lg font-semibold">Snap a meal</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Take a photo of what you&apos;re eating — we&apos;ll identify it
-            and estimate nutrition.
+            {eatenAtDate
+              ? "Add a photo for this past day — we'll identify it and estimate nutrition."
+              : "Take a photo of what you're eating — we'll identify it and estimate nutrition."}
           </p>
         </div>
         <button

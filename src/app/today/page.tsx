@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentProfile, getLatestGoals } from "@/lib/profile";
 import { getTodayEntries } from "@/lib/entries";
+import { getTodayTotals } from "@/lib/totals";
 import AddEntry from "./AddEntry";
+import DailyTotals from "./DailyTotals";
 import EntryCard from "./EntryCard";
 
 export default async function TodayPage() {
@@ -14,12 +16,23 @@ export default async function TodayPage() {
   // M2 gate: if the user hasn't picked a target mode yet, start onboarding.
   if (!profile.onboarded_at) redirect("/onboarding");
 
-  const [goals, entries] = await Promise.all([
+  const [goals, entries, { totals, entryCount }] = await Promise.all([
     getLatestGoals(),
     getTodayEntries(),
+    getTodayTotals(),
   ]);
   const modeLabel =
     profile.target_mode === "generic" ? "FDA generic" : "Personalized DRI";
+
+  // History link defaults to yesterday — that's almost always what the
+  // user wants when jumping back ("how did I eat yesterday?"). From
+  // there prev/next walks further.
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const y = yesterday.getFullYear();
+  const m = String(yesterday.getMonth() + 1).padStart(2, "0");
+  const d = String(yesterday.getDate()).padStart(2, "0");
+  const yesterdayHref = `/history/${y}-${m}-${d}`;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -46,6 +59,12 @@ export default async function TodayPage() {
         </div>
         <nav className="flex gap-2">
           <Link
+            href={yesterdayHref}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            History
+          </Link>
+          <Link
             href="/goals"
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
@@ -69,6 +88,16 @@ export default async function TodayPage() {
       </header>
 
       <AddEntry userId={profile.id} />
+
+      {goals && (
+        <div className="mt-6">
+          <DailyTotals
+            totals={totals}
+            goals={goals}
+            entryCount={entryCount}
+          />
+        </div>
+      )}
 
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
@@ -94,8 +123,7 @@ export default async function TodayPage() {
       </section>
 
       <footer className="mt-10 text-xs text-zinc-400">
-        AI nutrition analysis lands in the next milestone — for now, each
-        photo saves as a &ldquo;pending&rdquo; entry.
+        Values are AI estimates — tap any entry to review and refine.
       </footer>
     </main>
   );
