@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Nutrients } from "@/lib/targets/types";
 
 export type EntryStatus = "pending" | "analyzed" | "failed" | "rejected";
 
@@ -17,6 +18,14 @@ export type EntryItem = {
   estimated_serving: string | null;
   confidence: "low" | "medium" | "high" | null;
   reasoning: string | null;
+  /**
+   * Per-item nutrient breakdown the AI returned. Stored as JSONB so the
+   * shape is whatever the model wrote — typed as a Partial<Nutrients>
+   * so missing keys are tolerated (the UI just doesn't render that row).
+   * Numeric-only: non-numbers in the JSONB get filtered out by
+   * `parseNutrients` to keep the consumer code simple.
+   */
+  nutrients: Partial<Nutrients>;
 };
 
 export type EntryRow = {
@@ -39,6 +48,11 @@ export type EntryRow = {
   model_notes: string | null;
   /** Short-lived signed URL for the photo. Null if photo was deleted / expired. */
   photo_url: string | null;
+  /** Sum of `entry_items.nutrients.calories_kcal` for this entry. Null
+   *  unless analyzed — pending/failed/rejected rows have no items and
+   *  therefore no per-entry calorie figure. Surfaced here so the feed
+   *  row can render "~420 kcal" without a second query. */
+  calories_kcal: number | null;
   /** Items the AI identified. Empty for pending/failed/rejected entries
    *  (nothing to render) and populated for analyzed ones. */
   items: EntryItem[];
@@ -108,7 +122,7 @@ export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
   const { data, error } = await supabase
     .from("entries")
     .select(
-      "id, eaten_at, entry_type, photo_path, photo_expires_at, user_note, status, rejection_reason, model_notes, entry_items(id, name, estimated_serving, confidence, reasoning, created_at)"
+      "id, eaten_at, entry_type, photo_path, photo_expires_at, user_note, status, rejection_reason, model_notes, entry_items(id, name, estimated_serving, confidence, reasoning, created_at, nutrients)"
     )
     .eq("user_id", user.id)
     .gte("eaten_at", start.toISOString())
@@ -127,29 +141,48 @@ export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
       // the model returned them in (the insert preserves model order via
       // the array).
       const rawItems = (row as { entry_items?: unknown[] }).entry_items ?? [];
-      const items: EntryItem[] = (rawItems as Array<Record<string, unknown>>)
+      const sortedRaw = (rawItems as Array<Record<string, unknown>>)
         .slice()
         .sort((a, b) => {
           const at = String(a.created_at ?? "");
           const bt = String(b.created_at ?? "");
           return at.localeCompare(bt);
-        })
-        .map((it) => ({
-          id: String(it.id),
-          name: String(it.name ?? ""),
-          estimated_serving:
-            it.estimated_serving == null ? null : String(it.estimated_serving),
-          confidence:
-            it.confidence === "low" ||
-            it.confidence === "medium" ||
-            it.confidence === "high"
-              ? it.confidence
-              : null,
-          reasoning: it.reasoning == null ? null : String(it.reasoning),
-        }));
+        });
+
+      const items: EntryItem[] = sortedRaw.map((it) => ({
+        id: String(it.id),
+        name: String(it.name ?? ""),
+        estimated_serving:
+          it.estimated_serving == null ? null : String(it.estimated_serving),
+        confidence:
+          it.confidence === "low" ||
+          it.confidence === "medium" ||
+          it.confidence === "high"
+            ? it.confidence
+            : null,
+        reasoning: it.reasoning == null ? null : String(it.reasoning),
+        nutrients: parseNutrients(it.nutrients),
+      }));
+
+      // Per-entry calorie sum. Only meaningful for analyzed rows; we
+      // explicitly null it everywhere else so the UI doesn't have to
+      // distinguish "0 because not analyzed" from "0 because the meal
+      // was actually 0 kcal" (rare but real — a glass of water).
+      let caloriesKcal: number | null = null;
+      if (row.status === "analyzed") {
+        let sum = 0;
+        for (const it of sortedRaw) {
+          const n = (it.nutrients as Record<string, unknown> | null) ?? {};
+          const cal = n.calories_kcal;
+          if (typeof cal === "number" && Number.isFinite(cal)) {
+            sum += cal;
+          }
+        }
+        caloriesKcal = sum;
+      }
 
       if (!row.photo_path) {
-        return { ...row, photo_url: null, items };
+        return { ...row, photo_url: null, calories_kcal: caloriesKcal, items };
       }
       const { data: signed, error: signErr } = await supabase.storage
         .from("food-photos")
@@ -157,9 +190,14 @@ export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
       if (signErr) {
         // Most common cause: the object has been cleaned up but the row
         // hasn't been updated yet. Treat as "photo gone", don't blow up.
-        return { ...row, photo_url: null, items };
+        return { ...row, photo_url: null, calories_kcal: caloriesKcal, items };
       }
-      return { ...row, photo_url: signed.signedUrl, items };
+      return {
+        ...row,
+        photo_url: signed.signedUrl,
+        calories_kcal: caloriesKcal,
+        items,
+      };
     })
   );
 
@@ -173,4 +211,22 @@ export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
  */
 export async function getTodayEntries(): Promise<EntryRow[]> {
   return getEntriesForDate(new Date());
+}
+
+/**
+ * Coerce the JSONB `nutrients` blob into a Partial<Nutrients>. Anything
+ * non-numeric or non-finite is dropped, so consumers can rely on every
+ * present key being a real number. Unknown keys (i.e. nutrients we don't
+ * model) pass through too — they just won't render because the UI iterates
+ * over `NUTRIENT_LABELS`, not the raw blob.
+ */
+function parseNutrients(raw: unknown): Partial<Nutrients> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[k] = v;
+    }
+  }
+  return out as Partial<Nutrients>;
 }
