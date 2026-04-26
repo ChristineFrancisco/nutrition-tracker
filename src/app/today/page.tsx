@@ -24,15 +24,21 @@ export default async function TodayPage() {
   const modeLabel =
     profile.target_mode === "generic" ? "FDA generic" : "Personalized DRI";
 
-  // History link defaults to yesterday — that's almost always what the
-  // user wants when jumping back ("how did I eat yesterday?"). From
-  // there prev/next walks further.
-  const yesterday = new Date();
+  // Two history entry points:
+  //   - Yesterday — one-tap shortcut to the most-frequent target ("how
+  //     did I eat yesterday?"); the day view's prev/next then walks
+  //     further.
+  //   - Month — calendar heatmap for the current month; better for "how
+  //     has my week looked overall" or jumping more than a few days back.
+  const today = new Date();
+  const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  const y = yesterday.getFullYear();
-  const m = String(yesterday.getMonth() + 1).padStart(2, "0");
-  const d = String(yesterday.getDate()).padStart(2, "0");
-  const yesterdayHref = `/history/${y}-${m}-${d}`;
+  const yesterdayHref = `/history/${yesterday.getFullYear()}-${String(
+    yesterday.getMonth() + 1,
+  ).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  const monthHref = `/history/month/${today.getFullYear()}-${String(
+    today.getMonth() + 1,
+  ).padStart(2, "0")}`;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -62,7 +68,13 @@ export default async function TodayPage() {
             href={yesterdayHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
-            History
+            Yesterday
+          </Link>
+          <Link
+            href={monthHref}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Month
           </Link>
           <Link
             href="/goals"
