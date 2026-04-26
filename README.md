@@ -10,13 +10,19 @@ See [`plan.md`](./plan.md) for the full product + implementation plan.
 
 **M2 — Profile & goals:** done. First-run onboarding at `/onboarding` lets you pick FDA generic targets or personalized DRI. The profile form at `/profile` (age, sex, height, weight, activity level, goal) drives a Mifflin–St Jeor + DRI computation and auto-switches you to personalized mode on save. `/goals` shows the current targets with a one-click switch back to FDA generic. Goals are upserted one-per-user-per-day.
 
-**M3 — Capture & store:** done. The `/today` page has a camera/file-picker capture form that compresses photos client-side (1600px longest edge, JPEG 0.85, EXIF stripped), uploads directly to Supabase Storage, and creates a `pending` entry row. The feed shows each meal as a card with status badge (Analyzing / Analyzed / Failed / Not food), time, and photo-expiration countdown. Delete has an "are you sure" confirmation. Photos auto-expire after 7 days; the DB schema for the not-food rejection flow is already in place so M4 can wire up the AI short-circuit without another migration.
+**M3 — Capture & store:** done. The `/today` page has a camera/file-picker capture form that compresses photos client-side (1600px longest edge, JPEG 0.85, EXIF stripped), uploads directly to Supabase Storage, and creates a `pending` entry row. Photos auto-expire after 7 days; the DB schema for the not-food rejection flow is in place.
 
-**M4 — AI estimator (core loop):** done. A `NutritionEstimator` interface abstracts the provider; the first adapter uses Google Gemini 2.5 Flash (free tier covers typical personal use) via the `@google/genai` SDK with vision. The system prompt enforces a strict JSON schema — Gemini's `responseMimeType: "application/json"` forces raw JSON output — plus a single-prompt "not food" short-circuit; Zod validates every response before it hits the DB. The capture flow now: upload → create pending entry → fire `analyzeEntry` async → server signs a short-lived URL, calls the model, writes `entry_items` + flips the entry to `analyzed` / `rejected` / `failed`. A per-user 20 analyses / 24h rolling cap guards against runaway costs. The note field is prominent and framed as "help the AI identify ambiguous food" — user notes render as a quoted pull-quote on each card. Entry-detail editing (manual item edits) is deferred to M4.5.
+**M4 — AI estimator (core loop):** done. A `NutritionEstimator` interface abstracts the provider; the first adapter uses Google Gemini 2.5 Flash (free tier covers typical personal use) via the `@google/genai` SDK with vision. The system prompt enforces a strict 32-field nutrient schema — Gemini's `responseMimeType: "application/json"` forces raw JSON output — plus a single-prompt "not food" short-circuit; Zod validates every response before it hits the DB. The capture flow: upload → create pending entry → fire `analyzeEntry` async → server signs a short-lived URL, calls the model, writes `entry_items` + flips the entry to `analyzed` / `rejected` / `failed`. A per-user 20 analyses / 24h rolling cap guards against runaway costs. **Text-only entries** (no photo) ship via the same estimator with a text-only system prompt and `confidence` capped at "medium". **Refine + re-analyze** lets the user correct misidentifications and re-run on any analyzed/rejected/failed entry; **Retry** re-runs without prompts on failed ones.
+
+**M5 — Today rollups:** done. `getTodayTotals` aggregates analyzed entries; `DailyTotals` renders a calorie ring, macro/sodium/fiber/sat-fat/added-sugar/cholesterol bars, deterministic good/watch chip strip, and a collapsible per-nutrient micros grid (vertical bar charts grouped vitamins / minerals).
+
+**M6 — History & filtering:** mostly done. **Day view** at `/history/[date]` reuses DailyTotals + the entry feed against the goals snapshot in effect on that date (so past totals aren't retroactively re-measured). **Month view** at `/history/month/[month]` is a calendar heatmap colored by % of calorie target. **Past-day logging:** the capture form is mounted on the historical day view too — you can backfill an entry you forgot to log when it happened, with safe rejection of future dates. Range view (per-nutrient trend lines, best/worst days, green-day streak) is the remaining piece.
+
+**M6.5 — Entry feed redesign:** done. The day's entries render as a single-column rounded list. Each row shows a thumbnail (photo or ✍️ tile for text entries), time, a one-line description (analyzed entries show their AI-identified items joined with `·`), per-entry calories, and a status pill. Clicking a row reveals an inline panel with the user's quoted note, the AI's per-item list, a refine/re-analyze button, and (for failed entries) a retry. **Each item in the per-item list is itself clickable** and opens an FDA-style "Nutrition Facts" panel below it with the full 32-nutrient breakdown grouped exactly like a packaged-food label. A third **% Daily Value** column renders each nutrient's contribution against the user's daily goals for that specific date.
 
 **Theme:** light / dark toggle (bottom-right) with an Eggshell-and-Rusty-Spice palette in light mode and the original zinc-and-green look in dark. Preference persists in `localStorage`; first-time visitors get their OS preference.
 
-Next milestone: **M5 — Today rollups** (totals vs. goals, progress rings, good/bad highlight chips).
+Next milestone: **M7 polish** (PWA manifest + service worker, range view, automatic photo cleanup cron) and **M8 upper-intake / overdose warnings** — see [`plan.md`](./plan.md) §15.
 
 ## Prerequisites
 
@@ -68,6 +74,8 @@ Open the Supabase dashboard's **SQL Editor** and run each file in `supabase/migr
 - `0003_onboarding.sql` — `onboarded_at` / `target_mode` on profiles
 - `0004_daily_goals_one_per_day.sql` — unique index so goals upsert one row per user per day
 - `0005_retention_and_rejected_status.sql` — 7-day default retention + `rejected` entry status
+- `0006_expand_nutrients.sql` — expand `daily_goals` and the `entry_items.nutrients` JSONB shape to the full 32-field Nutrients schema (added cholesterol, potassium, full vitamin/mineral set)
+- `0007_entry_type.sql` — `entries.entry_type` column (`'photo' | 'text'`) so text-only entries can use the same table without a photo path
 
 ### 6. Run the dev server
 

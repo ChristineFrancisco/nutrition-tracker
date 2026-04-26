@@ -159,13 +159,37 @@ A subset of vitamins and minerals also carries a **Tolerable Upper Intake Level 
 ## 7. Screens
 
 1. **Onboarding / profile** — collect profile, show computed targets, let user override.
-2. **Today** — big camera button, today's photos as a grid, running totals vs targets as ring/bar charts, "good" and "bad" callouts.
-3. **Entry detail** — photo, model's itemization, editable serving size and item list (model estimates can be wrong; users can remove items or type `x 2` to scale), confidence chips.
-4. **History** — date picker with three filter modes:
-   - **Day** — single date, same view as Today but historical.
-   - **Month** — calendar heatmap colored by % of calorie target, tap a day to drill in.
-   - **Range** — two-date picker, shows averages per day, best/worst days, streak of goal-met days, per-nutrient trend lines.
-5. **Goals / profile edit** — view computed targets, toggle manual override per nutrient.
+2. **Today** — capture form (photo or text-only) at the top, running totals vs targets via DailyTotals (calories ring + macro/sodium/fiber bars + good/watch chip strip + collapsible micros grid), then the day's entries as a single-column rounded list (see §7a).
+3. **History** — three filter modes plus past-day logging:
+   - **Day** (`/history/[date]`) — same layout as Today (DailyTotals + entry feed) for any past calendar date. Goals render *as of that day* via a snapshot lookup, not the current goals, so historical totals aren't retroactively re-measured. The capture form is mounted here too — the user can backfill an entry they forgot to log when it happened.
+   - **Month** (`/history/month/[month]`) — calendar heatmap colored by % of calorie target, tap a day to drill in.
+   - **Range** — two-date picker, shows averages per day, best/worst days, streak of goal-met days, per-nutrient trend lines (M6 follow-up — not yet built).
+4. **Goals / profile edit** — view computed targets, toggle manual override per nutrient.
+
+## 7a. Entry feed UX
+
+The entry feed (used by Today and the historical day view) is a single-column rounded list with hairline dividers. Each row collapses to a fixed grid:
+
+```
+[thumb 56×56]   12:30 PM                     ~420 kcal  Analyzed ▾
+                Turkey sandwich · Avocado · Chips
+```
+
+- **Thumbnail** — for photo entries: the actual image (or a "photo expired" placeholder once the 7-day retention window has passed). For text entries: a ✍️ tile on a tinted square.
+- **Time + description** — time is bold tabular-nums; description follows a status priority: `pending → "estimating…"`; `failed → model_notes`; `rejected → rejection_reason`; `analyzed → items joined by " · "` (the AI's per-item summary, more useful than echoing the user's caption); else `→ user_note`; fallback `→ "Photo"`. The full user_note still surfaces as an amber-quoted block in the expanded panel.
+- **Calories** — `~420 kcal` shown only for analyzed entries; computed at the data layer by summing `entry_items.nutrients.calories_kcal`.
+- **Status pill** — Analyzed (emerald) / Analyzing… (amber) / Failed (red) / Not food (zinc).
+
+Clicking a row opens an inline panel below it (sibling node, not a child, so clicks inside don't bubble to the toggle):
+
+- The full **user_note** as an amber-quoted block when present.
+- **"What the AI identified"** — the per-item list. Each item shows its name, estimated serving, confidence dot, and a compact macro chip row (`420 kcal · 18 g P · 45 g C · 16 g F`). **Clicking an item** expands an FDA-style "Nutrition Facts" panel below it with the full 32-nutrient breakdown grouped: calories prominent at top, mandatory macros (fat with sat/trans sub-rows, cholesterol, sodium, carbs with fiber/sugars/added-sugars sub-rows, protein), then thick rule, then must-declare micros (D, Ca, Fe, K), thin rule, then the rest of the vitamins and minerals. A third **% DV** column renders the contribution against the user's *daily goals for that date* (so Today uses today's goals; history uses the snapshot from that day). Trans fat (ceiling 0) and any 0/missing target leave the %DV cell blank, matching the FDA convention.
+- **Refine description & re-analyze** button (peachy/amber) — opens a small textarea where the user can correct misidentifications ("the lemons in the background aren't part of this meal") and re-run the model. Burns one quota slot.
+- **Retry analyze** button on `failed` entries — re-runs without prompting for hints.
+- **Photo expiry** countdown when the photo is still available.
+- A subtle "Delete entry" link aligned bottom-right of the panel — reachable, never accidental.
+
+Multiple items can be expanded simultaneously so the user can compare two items side by side.
 
 ## 8. Filtering & reporting
 
@@ -189,28 +213,35 @@ Postgres does the work with `date_trunc(groupBy, eaten_at)` and a join on the go
 
 ## 10. Milestones
 
-**M1 — Scaffolding (0.5 day)**
-Next.js + TypeScript + Tailwind + Supabase client, auth via magic link, empty dashboard behind login.
+**M1 — Scaffolding** ✅ done.
+Next.js (App Router) + TypeScript + Tailwind + Supabase client, auth via magic link, empty dashboard behind login.
 
-**M2 — Profile & goals (0.5 day)**
-Profile form, Mifflin–St Jeor + DRI computation, `daily_goals` snapshot, goals view.
+**M2 — Profile & goals** ✅ done.
+Profile form, Mifflin–St Jeor + DRI computation, `daily_goals` upsert one-per-user-per-day, goals view, switch-modes flow.
 
-**M3 — Capture & store (0.5 day)**
-Camera input, client-side compression, upload to Supabase Storage, `entries` row created, photo renders in Today's feed.
+**M3 — Capture & store** ✅ done.
+Camera/file input + client-side JPEG 0.85 compression to 1600px longest edge, EXIF stripped, upload to Supabase Storage, `entries` row created with `pending` status, photo renders in Today's feed with status badge and 7-day expiry countdown.
 
-**M4 — AI estimator (1 day)**
-`NutritionEstimator` interface, first adapter, Zod schema, `/api/entries/analyze` endpoint, entry detail view with itemization and manual editing.
+**M4 — AI estimator** ✅ done.
+`NutritionEstimator` interface; Google Gemini 2.5 Flash adapter via `@google/genai` with `responseMimeType: "application/json"`; Zod-validated response; `analyzeEntry` server action signs short-lived URL, calls model, writes `entry_items` and flips entry to `analyzed` / `rejected` / `failed`. Per-user 20-analyses-per-rolling-24h cap. Text-only entry path (no photo) added in M4.5; the same estimator with a text-only system prompt and `confidence` capped at "medium".
 
-**M5 — Today rollups (0.5 day)**
-Totals calculator, progress rings for calories + key macros, good/bad highlight chips.
+**M5 — Today rollups** ✅ done.
+`getTodayTotals` aggregator; `DailyTotals` component with calories ring, macro bars (protein/carbs/fat/fiber/sodium/sat fat/added sugar/cholesterol), good/watch highlight chips computed deterministically from totals vs goals, and a collapsible micronutrient grid (vertical bar chart per nutrient, grouped vitamins / minerals).
 
-**M6 — History & filtering (1 day)**
-Day view, month heatmap, range view with trend lines, per-nutrient goal-hit logic.
+**M6 — History & filtering** ✅ mostly done.
+Day view at `/history/[date]` reusing DailyTotals + EntryCard against historical-snapshot goals; month heatmap at `/history/month/[month]` colored by % of calorie target; past-day logging via `AddEntry` mounted on the historical day view (server action accepts an `eaten_on` form field, validates not-future, revalidates the right path). Range view with trend lines / best+worst days / green-day streak is the remaining piece.
 
-**M7 — Polish (0.5 day)**
-PWA manifest + service worker so "Add to Home Screen" feels native on phones, empty states, error handling on failed AI calls, rate limit on `/analyze`.
+**M6.5 — Entry feed redesign** ✅ done.
+Replaced the M3 grid-of-cards with the row-based feed described in §7a: single-column rounded list, per-row thumbnail/time/description/calories/status pill, expandable inline panel with user_note quote, per-item list with macro chip row, and an FDA-style "Nutrition Facts" drilldown per item with a `% DV` column computed against the user's daily goals for that date.
 
-Total: ~4.5 engineering days for a working v1.
+**M7 — Polish** 🚧 partial.
+Done: refine + re-analyze flow, retry on failed, light/dark theme with Eggshell-Rusty-Spice palette + persisted preference, no-FOUC theme script.
+Outstanding: PWA manifest + service worker, "Add to Home Screen" pass, range view, automatic photo cleanup cron (currently the 7-day expiry is honored at read time but the Storage objects aren't actively GC'd).
+
+**M8 — Upper-limit safety warnings** ⏳ planned.
+See §15.
+
+Total: ~4.5 engineering days budgeted for v1; M5–M6.5 came in roughly on plan.
 
 ## 11. Estimation accuracy — full mitigation plan
 
