@@ -109,10 +109,10 @@ export default async function HistoryMonthPage({
         </div>
         <nav className="flex flex-wrap gap-2 sm:shrink-0">
           <Link
-            href={`/history/range?from=${formatLocalDateString(monthStart)}&to=${formatLocalDateString(rangeEnd(monthStart))}`}
+            href={`/history/week/${formatLocalDateString(weekAnchorForMonth(monthStart))}`}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
-            Range
+            Week
           </Link>
           <Link
             href="/today"
@@ -460,11 +460,13 @@ function addMonths(d: Date, n: number): Date {
 }
 
 /**
- * The "to" bound for a range link from this month: the last day of the
- * month, but clamped to today if the month being viewed is the current
- * one (so the range view doesn't 404 by asking for tomorrow).
+ * The date the Week link should anchor to from a month view: the most
+ * recent day in that month that's not in the future. For past months
+ * we pick the last day of the month; for the current month we pick
+ * today. The week page resolves the actual Mon→Sun window from any
+ * date inside it.
  */
-function rangeEnd(monthStart: Date): Date {
+function weekAnchorForMonth(monthStart: Date): Date {
   const lastOfMonth = new Date(
     monthStart.getFullYear(),
     monthStart.getMonth() + 1,

@@ -3,11 +3,12 @@ import {
   type NutrientKey,
   type Nutrients,
 } from "@/lib/targets/types";
-import { computeHighlights, pctOf } from "@/lib/totals";
+import { computeHighlights, pctOf, type Excess } from "@/lib/totals";
 import type {
   UpperLimitKey,
   UpperLimitMeta,
 } from "@/lib/targets/upper_limits";
+import ExcessIntakeCallout from "@/components/ExcessIntakeCallout";
 
 /**
  * Today rollup panel. Shown above the entries grid on /today so the
@@ -43,26 +44,48 @@ export default function DailyTotals({
   goals,
   entryCount,
   upperLimits,
+  excesses,
+  heading = "Today so far",
+  emptyHint = "Nothing logged yet — your totals will show up here as you add meals.",
+  countNoun = "meal",
+  countNounPlural,
 }: {
   totals: Nutrients;
   goals: Nutrients;
   entryCount: number;
   /** Optional UL meta map from computeUpperLimits(profile). When
-   *  provided, the micros grid renders a red overflow cap on any
-   *  nutrient whose total has crossed its UL. When omitted the grid
-   *  reads identically to its pre-M8 behavior. */
+   *  provided, the micros grid renders a red overflow rendering on
+   *  any nutrient whose total has crossed its UL. When omitted the
+   *  grid reads identically to its pre-M8 behavior. */
   upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>;
+  /** UL crossings for this period. When non-empty, a red marker
+   *  appears in the Vitamins & Minerals disclosure summary, and the
+   *  detailed Excess callout renders inside the disclosure (above
+   *  the bars) instead of as a top-of-page panel. */
+  excesses?: Excess[];
+  /** Heading for both the empty state and the populated panel. Default
+   *  "Today so far" on the Today page. Day view passes the date
+   *  label, week view passes "This week", etc. */
+  heading?: string;
+  /** Empty-state body copy. Tailored per period — the Today copy
+   *  encourages logging now ("as you add meals"); past periods use
+   *  copy that doesn't imply the period is still in progress. */
+  emptyHint?: string;
+  /** Singular noun for the entry count line. Defaults to "meal".
+   *  English plural-via-`+s` doesn't work for everything; pass both
+   *  forms when you need control (e.g. "entry" / "entries"). */
+  countNoun?: string;
+  /** Plural form. Defaults to `${countNoun}s`. */
+  countNounPlural?: string;
 }) {
+  const pluralNoun = countNounPlural ?? `${countNoun}s`;
   if (entryCount === 0) {
     return (
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Today so far
+          {heading}
         </h2>
-        <p>
-          Nothing logged yet — your totals will show up here as you add
-          meals.
-        </p>
+        <p>{emptyHint}</p>
       </section>
     );
   }
@@ -74,11 +97,11 @@ export default function DailyTotals({
     <section className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Today so far
+          {heading}
         </h2>
         <p className="mt-0.5 text-[11px] text-zinc-400">
-          {entryCount} {entryCount === 1 ? "meal" : "meals"} logged · all
-          numbers are AI estimates
+          {entryCount} {entryCount === 1 ? countNoun : pluralNoun}{" "}
+          logged · all numbers are AI estimates
         </p>
       </div>
 
@@ -167,6 +190,7 @@ export default function DailyTotals({
         totals={totals}
         goals={goals}
         upperLimits={upperLimits}
+        excesses={excesses ?? []}
       />
 
       {/* ----- Highlight chips ---------------------------------------- */}
@@ -496,13 +520,22 @@ function MicronutrientsDisclosure({
   totals,
   goals,
   upperLimits,
+  excesses,
 }: {
   totals: Nutrients;
   goals: Nutrients;
   upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>;
+  excesses: Excess[];
 }) {
+  const overCount = excesses.length;
+  // Auto-expand when there's an excess so the user doesn't have to
+  // hunt for the explanation. They can still collapse it manually.
+  const startOpen = overCount > 0;
   return (
-    <details className="group rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950">
+    <details
+      className="group rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950"
+      open={startOpen}
+    >
       <summary className="flex cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900">
         <span className="flex items-center gap-2">
           <span
@@ -512,12 +545,28 @@ function MicronutrientsDisclosure({
             ▶
           </span>
           Vitamins &amp; minerals
+          {overCount > 0 && (
+            // Red badge in the summary so the user sees there's
+            // something concerning here even when the disclosure is
+            // collapsed. The detailed risk copy lives in the Excess
+            // callout inside the disclosure body — clicking through
+            // is a single tap.
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800 dark:bg-red-500/20 dark:text-red-200">
+              <span
+                aria-hidden
+                className="inline-block h-1.5 w-1.5 rounded-full bg-red-600 dark:bg-red-500"
+              />
+              {overCount} over upper limit
+            </span>
+          )}
         </span>
         <span className="text-[11px] font-normal text-zinc-400">
           click to show all {VITAMIN_KEYS.length + MINERAL_KEYS.length}
         </span>
       </summary>
       <div className="space-y-4 border-t border-zinc-200 p-3 dark:border-zinc-800">
+        {overCount > 0 && <ExcessIntakeCallout excesses={excesses} />}
+
         <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
           Daily micronutrient intake varies a lot — don&apos;t panic over a
           low column on one day. The weekly view (coming soon) is more

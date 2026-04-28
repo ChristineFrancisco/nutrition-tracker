@@ -7,7 +7,6 @@ import { computeUpperLimits } from "@/lib/targets/upper_limits";
 import AddEntry from "./AddEntry";
 import DailyTotals from "./DailyTotals";
 import EntryCard from "./EntryCard";
-import ExcessIntakeCallout from "@/components/ExcessIntakeCallout";
 
 export default async function TodayPage() {
   const profile = await getCurrentProfile();
@@ -48,12 +47,10 @@ export default async function TodayPage() {
   const monthHref = `/history/month/${today.getFullYear()}-${String(
     today.getMonth() + 1,
   ).padStart(2, "0")}`;
-  // Range default: last 7 days ending today.
-  const sevenAgo = new Date(today);
-  sevenAgo.setDate(sevenAgo.getDate() - 6);
   const fmt = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const rangeHref = `/history/range?from=${fmt(sevenAgo)}&to=${fmt(today)}`;
+  // Week link: the week containing today.
+  const weekHref = `/history/week/${fmt(today)}`;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
@@ -86,16 +83,16 @@ export default async function TodayPage() {
             Yesterday
           </Link>
           <Link
+            href={weekHref}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Week
+          </Link>
+          <Link
             href={monthHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
             Month
-          </Link>
-          <Link
-            href={rangeHref}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            Range
           </Link>
           <Link
             href="/goals"
@@ -122,12 +119,6 @@ export default async function TodayPage() {
 
       <AddEntry userId={profile.id} />
 
-      {excesses.length > 0 && (
-        <div className="mt-6">
-          <ExcessIntakeCallout excesses={excesses} />
-        </div>
-      )}
-
       {goals && (
         <div className="mt-6">
           <DailyTotals
@@ -135,6 +126,7 @@ export default async function TodayPage() {
             goals={goals}
             entryCount={entryCount}
             upperLimits={upperLimits}
+            excesses={excesses}
           />
         </div>
       )}

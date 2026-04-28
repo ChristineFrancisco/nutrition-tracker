@@ -10,7 +10,6 @@ import { computeUpperLimits } from "@/lib/targets/upper_limits";
 import AddEntry from "@/app/today/AddEntry";
 import DailyTotals from "@/app/today/DailyTotals";
 import EntryCard from "@/app/today/EntryCard";
-import ExcessIntakeCallout from "@/components/ExcessIntakeCallout";
 
 /**
  * Historical day view — same layout as Today but without the capture
@@ -73,11 +72,8 @@ export default async function HistoryDatePage({
   const monthHref = `/history/month/${day.getFullYear()}-${String(
     day.getMonth() + 1
   ).padStart(2, "0")}`;
-  // Range link — last 7 days ending on the day being viewed.
-  const sevenAgo = addDays(day, -6);
-  const rangeHref = `/history/range?from=${formatLocalDateString(
-    sevenAgo
-  )}&to=${formatLocalDateString(day)}`;
+  // Week link — the week containing the day being viewed.
+  const weekHref = `/history/week/${formatLocalDateString(day)}`;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
@@ -92,16 +88,16 @@ export default async function HistoryDatePage({
         </div>
         <nav className="flex flex-wrap gap-2 sm:shrink-0">
           <Link
+            href={weekHref}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Week
+          </Link>
+          <Link
             href={monthHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
             Month
-          </Link>
-          <Link
-            href={rangeHref}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            Range
           </Link>
           <Link
             href="/today"
@@ -138,18 +134,15 @@ export default async function HistoryDatePage({
         <AddEntry userId={profile.id} eatenAtDate={dateStr} />
       </div>
 
-      {excesses.length > 0 && (
-        <div className="mb-6">
-          <ExcessIntakeCallout excesses={excesses} />
-        </div>
-      )}
-
       {goals && (
         <DailyTotals
           totals={totals}
           goals={goals}
           entryCount={entryCount}
           upperLimits={upperLimits}
+          excesses={excesses}
+          heading={longDateLabel}
+          emptyHint="Nothing was logged on this day."
         />
       )}
 
