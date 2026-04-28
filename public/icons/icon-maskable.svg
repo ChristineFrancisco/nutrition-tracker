@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Nutrition Tracker">
+  <!-- Maskable variant: full-bleed background (no border radius) so Android's
+       arbitrary mask shape (circle / squircle / teardrop / round-rect) doesn't
+       clip into transparent corners. The icon content is scaled to fit
+       inside the W3C "safe zone" — the central 80% of the canvas
+       (roughly cx=256 cy=256, radius 205). Anything outside that may be
+       cropped on round masks. -->
+  <rect width="512" height="512" fill="#059669"/>
+  <g transform="translate(256, 256) scale(0.78) translate(-256, -256)">
+    <!-- Same leaf as icon.svg, scaled in to clear the safe zone. -->
+    <path d="M 132 380 Q 132 132, 380 132 Q 380 380, 132 380 Z" fill="#ecfdf5"/>
+    <path d="M 132 380 L 380 132" stroke="#059669" stroke-width="22" stroke-linecap="round"/>
+    <path d="M 196 344 L 244 296" stroke="#059669" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+    <path d="M 232 308 L 292 248" stroke="#059669" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+    <path d="M 272 268 L 336 204" stroke="#059669" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+  </g>
+</svg>

@@ -7,6 +7,7 @@ import {
   pctOf,
   type DayCaloriesCell,
 } from "@/lib/totals";
+import { computeUpperLimits } from "@/lib/targets/upper_limits";
 
 /**
  * Month heatmap — calendar grid colored by % of calorie target, one
@@ -52,9 +53,13 @@ export default async function HistoryMonthPage({
   if (!profile) redirect("/login");
   if (!profile.onboarded_at) redirect("/onboarding");
 
+  // Pre-compute the UL meta map once and pass it into the month
+  // aggregator so each cell gets a hasUpperLimitExcess flag without an
+  // extra round-trip per day.
+  const upperLimits = computeUpperLimits(profile);
   const [goals, byDay] = await Promise.all([
     getLatestGoals(),
-    getMonthCaloriesByDay(monthStart),
+    getMonthCaloriesByDay(monthStart, upperLimits),
   ]);
 
   const calorieTarget = goals?.calories_kcal ?? 0;
@@ -79,8 +84,8 @@ export default async function HistoryMonthPage({
   const onTargetDays = countOnTargetDays(byDay, calorieTarget);
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-8 flex items-center justify-between gap-4">
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
             History · month
@@ -102,7 +107,13 @@ export default async function HistoryMonthPage({
             </p>
           )}
         </div>
-        <nav className="flex shrink-0 gap-2">
+        <nav className="flex flex-wrap gap-2 sm:shrink-0">
+          <Link
+            href={`/history/range?from=${formatLocalDateString(monthStart)}&to=${formatLocalDateString(rangeEnd(monthStart))}`}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Range
+          </Link>
           <Link
             href="/today"
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -194,12 +205,18 @@ export default async function HistoryMonthPage({
         </div>
       </section>
 
-      <footer className="mt-6 text-xs text-zinc-400">
+      <footer className="mt-6 text-xs leading-relaxed text-zinc-400">
         Days with{" "}
         <span aria-hidden className="text-amber-500">
           ⚠
         </span>{" "}
-        include at least one low-confidence estimate. Tap a day to review.
+        include at least one low-confidence estimate. A{" "}
+        <span
+          aria-hidden
+          className="inline-block h-1.5 w-1.5 -translate-y-px rounded-full bg-red-600 align-middle"
+        />{" "}
+        marks a day that crossed an upper safe intake limit (e.g. iron,
+        vitamin D). Tap a day to review.
       </footer>
     </main>
   );
@@ -260,6 +277,17 @@ function DayCell({
         >
           ⚠
         </div>
+      )}
+      {cell?.hasUpperLimitExcess && (
+        // M8: red dot when any tracked Upper Intake Level was crossed.
+        // Distinct from the amber ⚠ — UL excess is a safety signal, not
+        // a confidence flag. Positioned bottom-right so the two markers
+        // don't overlap on a day that has both.
+        <div
+          aria-hidden
+          className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-red-600 dark:bg-red-500"
+          title="A nutrient went over its upper safe intake limit"
+        />
       )}
     </div>
   );
@@ -429,4 +457,19 @@ function addMonths(d: Date, n: number): Date {
   const out = new Date(d);
   out.setMonth(out.getMonth() + n);
   return out;
+}
+
+/**
+ * The "to" bound for a range link from this month: the last day of the
+ * month, but clamped to today if the month being viewed is the current
+ * one (so the range view doesn't 404 by asking for tomorrow).
+ */
+function rangeEnd(monthStart: Date): Date {
+  const lastOfMonth = new Date(
+    monthStart.getFullYear(),
+    monthStart.getMonth() + 1,
+    0,
+  );
+  const today = startOfLocalDay(new Date());
+  return lastOfMonth.getTime() > today.getTime() ? today : lastOfMonth;
 }

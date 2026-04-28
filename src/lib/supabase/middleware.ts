@@ -41,7 +41,13 @@ export async function updateSession(request: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/_next/") ||
-    pathname === "/favicon.ico";
+    pathname === "/favicon.ico" ||
+    // PWA static files. The matcher in src/middleware.ts already
+    // excludes these, but if a future refactor reconnects them this
+    // gate keeps them from getting redirected to /login (which would
+    // make the browser parse a 302/HTML response as JSON).
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js";
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

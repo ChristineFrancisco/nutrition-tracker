@@ -163,7 +163,7 @@ A subset of vitamins and minerals also carries a **Tolerable Upper Intake Level 
 3. **History** — three filter modes plus past-day logging:
    - **Day** (`/history/[date]`) — same layout as Today (DailyTotals + entry feed) for any past calendar date. Goals render *as of that day* via a snapshot lookup, not the current goals, so historical totals aren't retroactively re-measured. The capture form is mounted here too — the user can backfill an entry they forgot to log when it happened.
    - **Month** (`/history/month/[month]`) — calendar heatmap colored by % of calorie target, tap a day to drill in.
-   - **Range** — two-date picker, shows averages per day, best/worst days, streak of goal-met days, per-nutrient trend lines (M6 follow-up — not yet built).
+   - **Range** (`/history/range?from=&to=`) — quick-pick buttons (7 / 30 days, This / Last month) plus custom date inputs. Server validates the bounds (max 90 days, swap from/to if reversed, clamp future dates to today, fall back to last 7 days on missing/malformed params). Renders a five-stat scorecard (days logged, avg calories, days hit calorie target, longest green-day streak, best/worst day), a six-row per-nutrient sparkline grid (calories, protein, carbs, fat, fiber, sodium — hand-rolled SVG, no charting dep), and a clickable per-day breakdown that drills into the day view.
 4. **Goals / profile edit** — view computed targets, toggle manual override per nutrient.
 
 ## 7a. Entry feed UX
@@ -228,18 +228,20 @@ Camera/file input + client-side JPEG 0.85 compression to 1600px longest edge, EX
 **M5 — Today rollups** ✅ done.
 `getTodayTotals` aggregator; `DailyTotals` component with calories ring, macro bars (protein/carbs/fat/fiber/sodium/sat fat/added sugar/cholesterol), good/watch highlight chips computed deterministically from totals vs goals, and a collapsible micronutrient grid (vertical bar chart per nutrient, grouped vitamins / minerals).
 
-**M6 — History & filtering** ✅ mostly done.
-Day view at `/history/[date]` reusing DailyTotals + EntryCard against historical-snapshot goals; month heatmap at `/history/month/[month]` colored by % of calorie target; past-day logging via `AddEntry` mounted on the historical day view (server action accepts an `eaten_on` form field, validates not-future, revalidates the right path). Range view with trend lines / best+worst days / green-day streak is the remaining piece.
+**M6 — History & filtering** ✅ done.
+Day view at `/history/[date]` reusing DailyTotals + EntryCard against historical-snapshot goals; month heatmap at `/history/month/[month]` colored by % of calorie target; past-day logging via `AddEntry` mounted on the historical day view (server action accepts an `eaten_on` form field, validates not-future, revalidates the right path). **Range view** at `/history/range?from=&to=` with quick-pick buttons (7d / 30d / This month / Last month) + custom date inputs, scorecard (days logged, avg calories, days hit calorie target, longest green-day streak, best/worst day), per-nutrient sparkline grid (calories, protein, carbs, fat, fiber, sodium — hand-rolled SVG, no charting dep), and a per-day breakdown linking each row to the day view.
 
 **M6.5 — Entry feed redesign** ✅ done.
 Replaced the M3 grid-of-cards with the row-based feed described in §7a: single-column rounded list, per-row thumbnail/time/description/calories/status pill, expandable inline panel with user_note quote, per-item list with macro chip row, and an FDA-style "Nutrition Facts" drilldown per item with a `% DV` column computed against the user's daily goals for that date.
 
 **M7 — Polish** 🚧 partial.
-Done: refine + re-analyze flow, retry on failed, light/dark theme with Eggshell-Rusty-Spice palette + persisted preference, no-FOUC theme script.
-Outstanding: PWA manifest + service worker, "Add to Home Screen" pass, range view, automatic photo cleanup cron (currently the 7-day expiry is honored at read time but the Storage objects aren't actively GC'd).
+Done: refine + re-analyze flow, retry on failed, light/dark theme with Eggshell-Rusty-Spice palette + persisted preference, no-FOUC theme script. **PWA shipped:** manifest.webmanifest with name/short_name/start_url=/today/icons/theme_color, source SVG → PNG icon set (192/512/180 + maskable), service worker (precaches static + cache-first on hashed assets, passthrough on HTML and mutations), iOS apple-touch-icon + appleWebApp meta, install-prompt chip on Chromium that captures `beforeinstallprompt`. Mobile responsiveness: headers stack on small screens, content shell widened to `max-w-3xl` so desktop layouts breathe.
+Outstanding: automatic photo cleanup cron (currently the 7-day expiry is honored at read time but the Storage objects aren't actively GC'd), friendly rate-limit error UX when the 20/24h cap fires, broader empty-state pass.
 
-**M8 — Upper-limit safety warnings** ⏳ planned.
-See §15.
+**M8 — Upper-limit safety warnings** ✅ done.
+Phase 1: UPPER_LIMITS data table at `src/lib/targets/upper_limits.ts` for 12 nutrients (vitamin A retinol, D, E, B6, niacin, folic acid, iron, zinc, selenium, calcium [age-banded], magnesium, choline) with one-line risk copy + source flag (`total` / `added` / `supplemental`); `computeExcesses(totals, upperLimits)` helper next to computeHighlights; `<ExcessIntakeCallout>` red component with per-nutrient row (total / limit / pct), risk hint, and the supplements caveat for source-restricted nutrients; mounted on Today and the historical day view above DailyTotals.
+Phase 2: per-day `hasUpperLimitExcess` flag on the month aggregate so calendar cells render a red dot bottom-right on any day a UL was crossed (distinct from the amber ⚠ low-confidence marker). Bar-overflow rendering tier on the micros grid in DailyTotals — `VerticalBar` accepts an `upperLimit` prop; when crossed it adds a red cap, a red ring around the bar pill, and turns the percentage text red.
+Phase 3: chronic-exposure indicator in the range view. `getRangeData` accepts a UL map and flips a `hasUpperLimitExcess` flag per bucket; `RangeStats.daysOverUpperLimit` counts those days; `RangeScorecard` surfaces the count as a sixth tile (red when > 0); the per-day breakdown list shows a small red dot inline with each flagged date.
 
 Total: ~4.5 engineering days budgeted for v1; M5–M6.5 came in roughly on plan.
 
@@ -370,18 +372,11 @@ The DRI table extends naturally: where the existing fields specify the target, a
 
 ### Milestone
 
-New **M8 — Upper-limit safety.** Slots after the current M7 polish work.
+**M8 — Upper-limit safety.** Done. Implementation diverged slightly from the original sketch — see the M8 entry in §10 for the actual phasing. Notable choices:
 
-- Extend the targets module with `upper_limit_*` fields; update the FDA generic table and the DRI tables.
-- Add `computeExcesses(totals, goals)` next to `computeHighlights` in `lib/totals.ts`, returning the same `Highlight[]` shape but for UL crossings.
-- Build the "Excess intake" callout component; thread it through Today, day view, and (eventually) range view.
-- Add the bar-overflow rendering tier in DailyTotals (target/limit/excess).
-- Add the red corner dot in the month view's calendar cells.
-- Document the source-restricted-nutrient caveat in user-visible copy on Goals page so the user understands why the warning fires (or doesn't) on niacin/folate/magnesium.
-
-### Open question for later
-
-Single-day vs chronic. A single 60-mg-iron day is fine for almost everyone; ten days in a row is not. The clinically meaningful signal is the trend, not the spike. Once the range view exists we add a "N days in last 7 over UL" chip — that's the chronic-exposure indicator. v1 of this feature warns per-day with copy that gently notes a single high day isn't usually harmful but the pattern matters.
+- ULs live in a single static module (`src/lib/targets/upper_limits.ts`) rather than as additional columns on `daily_goals`. They're scientific safety thresholds, not personal targets, so applying current values to historical days is correct and we save a migration.
+- Source-restricted nutrient caveat (niacin, folic acid, supplemental magnesium) is surfaced as inline italic copy under the affected row in the Excess callout, rather than on the Goals page.
+- The chronic-exposure indicator landed as a single "Over upper limit: N days" stat in the range scorecard plus a per-day red dot in the breakdown list. We didn't bucket "in last 7 days" — the range picker already lets the user choose any window, so the count scales with what they're inspecting.
 
 ## 16. Not in scope for v1
 

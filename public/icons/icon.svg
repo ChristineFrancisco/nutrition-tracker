@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Nutrition Tracker">
+  <!-- Rounded emerald background — used for the standard (non-maskable) icon
+       and the apple-touch-icon. iOS rounds the corners itself, but giving it
+       a slight rounding here means the icon looks consistent if served from
+       a context that doesn't apply masking. -->
+  <rect width="512" height="512" rx="112" fill="#059669"/>
+  <!-- Leaf body: a teardrop sweep from bottom-left to top-right. -->
+  <path d="M 132 380 Q 132 132, 380 132 Q 380 380, 132 380 Z" fill="#ecfdf5"/>
+  <!-- Central vein, full diagonal. -->
+  <path d="M 132 380 L 380 132" stroke="#059669" stroke-width="22" stroke-linecap="round"/>
+  <!-- Three smaller side veins, stepped up the leaf. Subtle but enough to
+       read as "leafy" rather than a rounded blob. -->
+  <path d="M 196 344 L 244 296" stroke="#059669" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+  <path d="M 232 308 L 292 248" stroke="#059669" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+  <path d="M 272 268 L 336 204" stroke="#059669" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+</svg>

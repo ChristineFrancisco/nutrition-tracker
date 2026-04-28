@@ -4,6 +4,10 @@ import {
   type Nutrients,
 } from "@/lib/targets/types";
 import { computeHighlights, pctOf } from "@/lib/totals";
+import type {
+  UpperLimitKey,
+  UpperLimitMeta,
+} from "@/lib/targets/upper_limits";
 
 /**
  * Today rollup panel. Shown above the entries grid on /today so the
@@ -38,10 +42,16 @@ export default function DailyTotals({
   totals,
   goals,
   entryCount,
+  upperLimits,
 }: {
   totals: Nutrients;
   goals: Nutrients;
   entryCount: number;
+  /** Optional UL meta map from computeUpperLimits(profile). When
+   *  provided, the micros grid renders a red overflow cap on any
+   *  nutrient whose total has crossed its UL. When omitted the grid
+   *  reads identically to its pre-M8 behavior. */
+  upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>;
 }) {
   if (entryCount === 0) {
     return (
@@ -153,7 +163,11 @@ export default function DailyTotals({
       </div>
 
       {/* ----- Vitamins & minerals (collapsible) ---------------------- */}
-      <MicronutrientsDisclosure totals={totals} goals={goals} />
+      <MicronutrientsDisclosure
+        totals={totals}
+        goals={goals}
+        upperLimits={upperLimits}
+      />
 
       {/* ----- Highlight chips ---------------------------------------- */}
       {(good.length > 0 || watch.length > 0) && (
@@ -481,9 +495,11 @@ const SHORT_LABELS: Partial<Record<NutrientKey, string>> = {
 function MicronutrientsDisclosure({
   totals,
   goals,
+  upperLimits,
 }: {
   totals: Nutrients;
   goals: Nutrients;
+  upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>;
 }) {
   return (
     <details className="group rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950">
@@ -512,14 +528,24 @@ function MicronutrientsDisclosure({
           <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
             Vitamins
           </h4>
-          <VerticalBarGrid keys={VITAMIN_KEYS} totals={totals} goals={goals} />
+          <VerticalBarGrid
+            keys={VITAMIN_KEYS}
+            totals={totals}
+            goals={goals}
+            upperLimits={upperLimits}
+          />
         </div>
 
         <div>
           <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
             Minerals
           </h4>
-          <VerticalBarGrid keys={MINERAL_KEYS} totals={totals} goals={goals} />
+          <VerticalBarGrid
+            keys={MINERAL_KEYS}
+            totals={totals}
+            goals={goals}
+            upperLimits={upperLimits}
+          />
         </div>
       </div>
     </details>
@@ -530,21 +556,27 @@ function VerticalBarGrid({
   keys,
   totals,
   goals,
+  upperLimits,
 }: {
   keys: NutrientKey[];
   totals: Nutrients;
   goals: Nutrients;
+  upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>;
 }) {
   return (
     <div className="grid grid-cols-4 gap-x-2 gap-y-3 sm:grid-cols-6">
-      {keys.map((k) => (
-        <VerticalBar
-          key={k}
-          nutrientKey={k}
-          value={totals[k]}
-          target={goals[k]}
-        />
-      ))}
+      {keys.map((k) => {
+        const ul = upperLimits?.[k as UpperLimitKey];
+        return (
+          <VerticalBar
+            key={k}
+            nutrientKey={k}
+            value={totals[k]}
+            target={goals[k]}
+            upperLimit={ul?.value}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -553,52 +585,101 @@ function VerticalBar({
   nutrientKey,
   value,
   target,
+  upperLimit,
 }: {
   nutrientKey: NutrientKey;
   value: number;
   target: number;
+  /** UL for this nutrient, when one exists. When defined and `value`
+   *  exceeds it, the bar gets a red overflow cap and the percentage
+   *  text turns red. */
+  upperLimit?: number;
 }) {
   const meta = NUTRIENT_LABELS[nutrientKey];
   const pct = pctOf(value, target);
   const label = SHORT_LABELS[nutrientKey] ?? meta.label;
-  // Monochromatic emerald scale: same hue, stronger saturation as we
-  // approach the goal. Keeps the grid scannable as a "how full is
-  // the day" view without any single tier reading as a warning.
+  const overUl = upperLimit != null && upperLimit > 0 && value > upperLimit;
+  // Monochromatic emerald scale below UL: same hue, stronger saturation
+  // as we approach the goal. Keeps the grid scannable as a "how full
+  // is the day" view without any single tier reading as a warning.
   const tone =
     pct >= 100
       ? "bg-emerald-600"
       : pct >= 50
         ? "bg-emerald-500"
         : "bg-emerald-300";
-  // Bars are 64px tall; fill is bottom-anchored. We clamp to 100% for
-  // the fill but still show >100% in the caption so the number is
-  // honest.
+  // Default (below-UL) fill: bottom-anchored, 0 → target. Clamp to 100%
+  // for the fill but still surface >100% in the caption.
   const fillPct = Math.min(pct, 100);
+  // Over-UL fill: switch reference frame to "0 → 2×UL" so the UL line
+  // sits at 50% of the pill height. Red fill represents the actual
+  // intake on that scale — 100% of UL fills half the pill, 150%
+  // three-quarters, 200%+ pegs at full. Keeps the visual proportional
+  // to the safety threshold instead of inventing a separate "cap"
+  // segment that mixed two reference frames.
+  const ulFillPct =
+    overUl && upperLimit
+      ? Math.min(100, (value / (2 * upperLimit)) * 100)
+      : 0;
+  const ulPctOfLimit = overUl && upperLimit
+    ? Math.round((value / upperLimit) * 100)
+    : 0;
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300">
         {label}
       </span>
       <div
-        className="relative h-16 w-5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
-        title={`${meta.label}: ~${formatShort(value)} / ${formatShort(
-          target
-        )} ${meta.unit} · ${Math.round(pct)}% of target`}
-      >
-        <div
-          className={`absolute bottom-0 left-0 right-0 ${tone} transition-all`}
-          style={{ height: `${fillPct}%` }}
-          aria-hidden
-        />
-      </div>
-      <span
-        className={`font-mono text-[10px] ${
-          pct >= 100
-            ? "text-emerald-700 dark:text-emerald-300"
-            : "text-zinc-500 dark:text-zinc-400"
+        className={`relative h-16 w-5 overflow-hidden rounded-full ${
+          overUl
+            ? "bg-amber-100 ring-1 ring-red-400 dark:bg-amber-500/15 dark:ring-red-500/60"
+            : "bg-zinc-200 dark:bg-zinc-800"
         }`}
+        title={
+          overUl
+            ? `${meta.label}: ~${formatShort(value)} ${meta.unit} · ${Math.round(
+                pct,
+              )}% of target · ${ulPctOfLimit}% of upper safe limit (${formatShort(
+                upperLimit ?? 0,
+              )} ${meta.unit})`
+            : `${meta.label}: ~${formatShort(value)} / ${formatShort(
+                target,
+              )} ${meta.unit} · ${Math.round(pct)}% of target`
+        }
       >
-        {Math.round(pct)}%
+        {overUl ? (
+          <>
+            <div
+              aria-hidden
+              className="absolute bottom-0 left-0 right-0 bg-red-500 transition-all dark:bg-red-600"
+              style={{ height: `${ulFillPct}%` }}
+            />
+            {/* UL reference line at 50% of the pill — a thin dashed
+                tick so the user can read "this is where the safe limit
+                sits" without it dominating the fill. */}
+            <div
+              aria-hidden
+              className="absolute left-0 right-0 border-t border-dashed border-red-700/50 dark:border-red-300/40"
+              style={{ bottom: "50%" }}
+            />
+          </>
+        ) : (
+          <div
+            aria-hidden
+            className={`absolute bottom-0 left-0 right-0 ${tone} transition-all`}
+            style={{ height: `${fillPct}%` }}
+          />
+        )}
+      </div>
+      <span className="font-mono text-[10px] text-zinc-600 dark:text-zinc-300">
+        {/* Once over UL the percentage label switches to read against
+            the UL — that's the more important reference now ("you're
+            150% of the safe limit" matters more than "you're 215% of
+            target"). Keeps the on-screen number in the same scale as
+            the bar fill. Color stays neutral (matching the nutrient
+            name above) — the bar's fill color does the alerting; the
+            number is informational. */}
+        {overUl ? `${ulPctOfLimit}% UL` : `${Math.round(pct)}%`}
       </span>
     </div>
   );

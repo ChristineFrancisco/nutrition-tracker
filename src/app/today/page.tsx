@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentProfile, getLatestGoals } from "@/lib/profile";
 import { getTodayEntries } from "@/lib/entries";
-import { getTodayTotals } from "@/lib/totals";
+import { computeExcesses, getTodayTotals } from "@/lib/totals";
+import { computeUpperLimits } from "@/lib/targets/upper_limits";
 import AddEntry from "./AddEntry";
 import DailyTotals from "./DailyTotals";
 import EntryCard from "./EntryCard";
+import ExcessIntakeCallout from "@/components/ExcessIntakeCallout";
 
 export default async function TodayPage() {
   const profile = await getCurrentProfile();
@@ -24,6 +26,13 @@ export default async function TodayPage() {
   const modeLabel =
     profile.target_mode === "generic" ? "FDA generic" : "Personalized DRI";
 
+  // ULs are computed deterministically from the profile (calcium has an
+  // age band; the rest are flat for adults). We pass the meta map down
+  // so the callout can render risk copy + the source caveat for niacin
+  // / folic acid / supplemental magnesium.
+  const upperLimits = computeUpperLimits(profile);
+  const excesses = computeExcesses(totals, upperLimits);
+
   // Two history entry points:
   //   - Yesterday — one-tap shortcut to the most-frequent target ("how
   //     did I eat yesterday?"); the day view's prev/next then walks
@@ -39,10 +48,16 @@ export default async function TodayPage() {
   const monthHref = `/history/month/${today.getFullYear()}-${String(
     today.getMonth() + 1,
   ).padStart(2, "0")}`;
+  // Range default: last 7 days ending today.
+  const sevenAgo = new Date(today);
+  sevenAgo.setDate(sevenAgo.getDate() - 6);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const rangeHref = `/history/range?from=${fmt(sevenAgo)}&to=${fmt(today)}`;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-8 flex items-center justify-between">
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Today</h1>
           <p className="text-sm text-zinc-500">
@@ -63,7 +78,7 @@ export default async function TodayPage() {
             )}
           </p>
         </div>
-        <nav className="flex gap-2">
+        <nav className="flex flex-wrap gap-2">
           <Link
             href={yesterdayHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -75,6 +90,12 @@ export default async function TodayPage() {
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
             Month
+          </Link>
+          <Link
+            href={rangeHref}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Range
           </Link>
           <Link
             href="/goals"
@@ -101,12 +122,19 @@ export default async function TodayPage() {
 
       <AddEntry userId={profile.id} />
 
+      {excesses.length > 0 && (
+        <div className="mt-6">
+          <ExcessIntakeCallout excesses={excesses} />
+        </div>
+      )}
+
       {goals && (
         <div className="mt-6">
           <DailyTotals
             totals={totals}
             goals={goals}
             entryCount={entryCount}
+            upperLimits={upperLimits}
           />
         </div>
       )}

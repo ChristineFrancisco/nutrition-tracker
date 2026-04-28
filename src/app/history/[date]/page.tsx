@@ -5,10 +5,12 @@ import {
   getGoalsEffectiveOn,
 } from "@/lib/profile";
 import { formatLocalDateString, getEntriesForDate } from "@/lib/entries";
-import { getTotalsForDate } from "@/lib/totals";
+import { computeExcesses, getTotalsForDate } from "@/lib/totals";
+import { computeUpperLimits } from "@/lib/targets/upper_limits";
 import AddEntry from "@/app/today/AddEntry";
 import DailyTotals from "@/app/today/DailyTotals";
 import EntryCard from "@/app/today/EntryCard";
+import ExcessIntakeCallout from "@/components/ExcessIntakeCallout";
 
 /**
  * Historical day view — same layout as Today but without the capture
@@ -49,6 +51,13 @@ export default async function HistoryDatePage({
     getTotalsForDate(day),
   ]);
 
+  // ULs are computed from the user's profile (calcium has an age band,
+  // the rest are flat for adults). We deliberately don't snapshot ULs
+  // per-day — they're scientific safety thresholds, not personal
+  // targets, so applying current values to historical days is correct.
+  const upperLimits = computeUpperLimits(profile);
+  const excesses = computeExcesses(totals, upperLimits);
+
   const prevDay = addDays(day, -1);
   const nextDay = addDays(day, 1);
   const nextIsToday = nextDay.getTime() === today.getTime();
@@ -64,10 +73,15 @@ export default async function HistoryDatePage({
   const monthHref = `/history/month/${day.getFullYear()}-${String(
     day.getMonth() + 1
   ).padStart(2, "0")}`;
+  // Range link — last 7 days ending on the day being viewed.
+  const sevenAgo = addDays(day, -6);
+  const rangeHref = `/history/range?from=${formatLocalDateString(
+    sevenAgo
+  )}&to=${formatLocalDateString(day)}`;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-8 flex items-center justify-between gap-4">
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
             History
@@ -76,12 +90,18 @@ export default async function HistoryDatePage({
             {longDateLabel}
           </h1>
         </div>
-        <nav className="flex shrink-0 gap-2">
+        <nav className="flex flex-wrap gap-2 sm:shrink-0">
           <Link
             href={monthHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
             Month
+          </Link>
+          <Link
+            href={rangeHref}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Range
           </Link>
           <Link
             href="/today"
@@ -118,8 +138,19 @@ export default async function HistoryDatePage({
         <AddEntry userId={profile.id} eatenAtDate={dateStr} />
       </div>
 
+      {excesses.length > 0 && (
+        <div className="mb-6">
+          <ExcessIntakeCallout excesses={excesses} />
+        </div>
+      )}
+
       {goals && (
-        <DailyTotals totals={totals} goals={goals} entryCount={entryCount} />
+        <DailyTotals
+          totals={totals}
+          goals={goals}
+          entryCount={entryCount}
+          upperLimits={upperLimits}
+        />
       )}
 
       <section className="mt-8">

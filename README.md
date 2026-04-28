@@ -16,13 +16,15 @@ See [`plan.md`](./plan.md) for the full product + implementation plan.
 
 **M5 — Today rollups:** done. `getTodayTotals` aggregates analyzed entries; `DailyTotals` renders a calorie ring, macro/sodium/fiber/sat-fat/added-sugar/cholesterol bars, deterministic good/watch chip strip, and a collapsible per-nutrient micros grid (vertical bar charts grouped vitamins / minerals).
 
-**M6 — History & filtering:** mostly done. **Day view** at `/history/[date]` reuses DailyTotals + the entry feed against the goals snapshot in effect on that date (so past totals aren't retroactively re-measured). **Month view** at `/history/month/[month]` is a calendar heatmap colored by % of calorie target. **Past-day logging:** the capture form is mounted on the historical day view too — you can backfill an entry you forgot to log when it happened, with safe rejection of future dates. Range view (per-nutrient trend lines, best/worst days, green-day streak) is the remaining piece.
+**M6 — History & filtering:** done. **Day view** at `/history/[date]` reuses DailyTotals + the entry feed against the goals snapshot in effect on that date (so past totals aren't retroactively re-measured). **Month view** at `/history/month/[month]` is a calendar heatmap colored by % of calorie target. **Past-day logging:** the capture form is mounted on the historical day view too — you can backfill an entry you forgot to log when it happened, with safe rejection of future dates. **Range view** at `/history/range?from=&to=` with quick-pick buttons (7d / 30d / This month / Last month), a five-stat scorecard (days logged, avg cals, days on target, longest green-day streak, best/worst), per-nutrient SVG sparklines for calories/protein/carbs/fat/fiber/sodium, and a clickable per-day breakdown.
 
 **M6.5 — Entry feed redesign:** done. The day's entries render as a single-column rounded list. Each row shows a thumbnail (photo or tile for text entries), time, a one-line description (analyzed entries show their AI-identified items joined with `·`), per-entry calories, and a status pill. Clicking a row reveals an inline panel with the user's quoted note, the AI's per-item list, a refine/re-analyze button, and (for failed entries) a retry. **Each item in the per-item list is itself clickable** and opens an FDA-style "Nutrition Facts" panel below it with the full 32-nutrient breakdown grouped exactly like a packaged-food label. A third **% Daily Value** column renders each nutrient's contribution against the user's daily goals for that specific date.
 
 **Theme:** light / dark toggle (bottom-right) with an Eggshell-and-Rusty-Spice palette in light mode and the original zinc-and-green look in dark. Preference persists in `localStorage`; first-time visitors get their OS preference.
 
-Next milestone: **M7 polish** (PWA manifest + service worker, range view, automatic photo cleanup cron) and **M8 upper-intake / overdose warnings** — see [`plan.md`](./plan.md) §15.
+**M7 — Polish:** PWA shipped (manifest, service worker, app icons, install-prompt chip on Chromium, iOS apple-touch-icon + appleWebApp meta, theme-color tinting). Mobile responsiveness pass — headers stack on small screens, content shell widened. Outstanding: automatic photo cleanup cron, friendly rate-limit error UX, broader empty-state pass.
+
+**M8 — Upper-intake / overdose warnings:** done. Tolerable Upper Intake Levels for 12 nutrients (vitamin A retinol 3000 mcg, D 100 mcg, E 1000 mg, B6 100 mg, niacin 35 mg, folic acid 1000 mcg, iron 45 mg, zinc 40 mg, selenium 400 mcg, calcium 2500/2000 mg by age, magnesium 350 mg supplemental, choline 3500 mg). Surfaced four ways: (1) a red **Excess intake** callout above DailyTotals on Today and the day-history view, with per-nutrient total/limit/% and a "supplements drive most of this" caveat for niacin / folic acid / supplemental magnesium; (2) red overflow cap + ring + red text on the micros grid bars when a UL is crossed; (3) red dot on month-calendar cells for any day a UL was crossed (distinct from the amber ⚠ low-confidence marker); (4) chronic-exposure stat in the range scorecard ("Over upper limit: N days", red when > 0) plus a per-day red dot in the breakdown list — see [`plan.md`](./plan.md) §15.
 
 ## Prerequisites
 
@@ -100,16 +102,24 @@ Open http://localhost:3000. You'll be redirected to `/login`. Enter your email, 
 ```
 nutrition-tracker/
 ├── plan.md                            ← product + implementation plan
+├── public/
+│   ├── manifest.webmanifest           ← PWA manifest (name/icons/theme/start_url)
+│   ├── sw.js                          ← service worker (precache + cache-first static)
+│   ├── apple-touch-icon.png           180×180 iOS home-screen icon
+│   ├── favicon-16.png / favicon-32.png browser tab icons
+│   └── icons/                         source SVGs + 192/512/maskable PNGs
 ├── supabase/
 │   └── migrations/                    ← SQL, applied via the Supabase SQL Editor
 │       ├── 0001_initial_schema.sql
 │       ├── 0002_storage_bucket.sql
 │       ├── 0003_onboarding.sql
 │       ├── 0004_daily_goals_one_per_day.sql
-│       └── 0005_retention_and_rejected_status.sql
+│       ├── 0005_retention_and_rejected_status.sql
+│       ├── 0006_expand_nutrients.sql
+│       └── 0007_entry_type.sql
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx                 → pre-hydration theme script + ThemeToggle mount
+│   │   ├── layout.tsx                 → pre-hydration theme script, manifest+icon meta, SW + install-prompt mount
 │   │   ├── page.tsx                   → redirects to /today
 │   │   ├── globals.css                → light/dark CSS variables + brand palette
 │   │   ├── login/                     → magic-link sign-in
@@ -117,15 +127,37 @@ nutrition-tracker/
 │   │   ├── onboarding/                → first-run target-mode picker
 │   │   ├── profile/                   → profile form + saveProfile action
 │   │   ├── goals/                     → goals view + switchToGeneric action
-│   │   └── today/                     → capture form, feed, createEntry/deleteEntry
+│   │   ├── today/                     → capture, feed, server actions
+│   │   │   ├── page.tsx                  Today page composition
+│   │   │   ├── AddEntry.tsx              tabbed photo / text-entry chooser (also used on history pages)
+│   │   │   ├── CaptureForm.tsx           camera input + client-side compression flow
+│   │   │   ├── TextEntryForm.tsx         no-photo description path
+│   │   │   ├── DailyTotals.tsx           calorie ring + macro bars + chip strip + micros grid
+│   │   │   ├── EntryCard.tsx             single-row layout + nutrition-label drilldown
+│   │   │   ├── RefineEntryForm.tsx       refine + re-analyze textarea
+│   │   │   ├── RetryAnalyzeButton.tsx    one-click retry on failed entries
+│   │   │   ├── DeleteEntryButton.tsx     inline subtle delete with confirm
+│   │   │   ├── ExpandableText.tsx        clamp-with-toggle helper
+│   │   │   └── actions.ts                createEntry / createTextEntry / analyzeEntry / refineEntry / deleteEntry / parseEatenOnFromForm
+│   │   └── history/
+│   │       ├── [date]/page.tsx        day view with AddEntry + DailyTotals + entry feed
+│   │       ├── month/[month]/page.tsx calendar heatmap colored by % of calorie target
+│   │       └── range/                 date-range view: scorecard + sparklines + per-day list
+│   │           ├── page.tsx              query-string-driven server component
+│   │           ├── RangeDatePicker.tsx   client form (quick picks + custom dates)
+│   │           ├── RangeScorecard.tsx    5-stat headline card
+│   │           └── NutrientTrend.tsx     hand-rolled SVG sparkline per nutrient
 │   ├── components/
-│   │   └── ThemeToggle.tsx            → fixed-position light/dark switch
+│   │   ├── ThemeToggle.tsx            → fixed-position light/dark switch
+│   │   ├── InstallPrompt.tsx          → emerald "Install app" chip on Chromium (beforeinstallprompt)
+│   │   └── RegisterServiceWorker.tsx  → registers /sw.js in production builds
 │   ├── lib/
-│   │   ├── entries.ts                 → today-feed query + signed-URL helper
+│   │   ├── entries.ts                 → entry queries (today/date), per-item nutrients parsing, day/month boundaries
+│   │   ├── totals.ts                  → totals aggregation, pctOf, computeHighlights, range data + stats
 │   │   ├── image.ts                   → client-side compression (canvas, JPEG 0.85)
-│   │   ├── profile.ts                 → profile + goals helpers (upsert one/day)
-│   │   ├── estimator/                 → NutritionEstimator interface + Gemini Flash adapter
-│   │   ├── targets/                   → FDA generic values, DRI tables, computeGoals
+│   │   ├── profile.ts                 → profile + goals helpers (upsert one/day, getGoalsEffectiveOn snapshot lookup)
+│   │   ├── estimator/                 → NutritionEstimator interface + Gemini Flash adapter (vision + text)
+│   │   ├── targets/                   → FDA generic values, DRI tables, computeGoals, NUTRIENT_LABELS
 │   │   └── supabase/                  → browser / server / middleware clients
 │   └── middleware.ts                  → session refresh + route gate
 ├── next.config.mjs
@@ -136,9 +168,6 @@ nutrition-tracker/
 
 ## What's coming next
 
-- **M4.5 — Entry detail + manual edits:** per-entry page with the model's itemization, editable servings, add/remove items, delete from detail view.
-- **M5 — Rollups:** aggregate today's analyzed entries against the daily goals and render progress bars + good/bad highlight chips.
-- **M6 — History & filtering:** prior days, date-range views, per-nutrient trends.
-- **M7 — Polish:** automatic photo cleanup (cron), empty states, accessibility sweep.
+- **M7 — Remaining polish:** automatic photo cleanup cron (the 7-day expiry is honored at read time but Storage objects aren't actively GC'd), friendly rate-limit error UX on `/analyze`, broader empty-state pass.
 
 See [`plan.md`](./plan.md) §10 for the full milestone breakdown.

@@ -80,8 +80,8 @@ export default async function GoalsPage({
   ];
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-8 flex items-start justify-between gap-4">
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Your daily targets</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -105,7 +105,7 @@ export default async function GoalsPage({
             </Link>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link
             href="/profile"
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
