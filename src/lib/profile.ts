@@ -19,7 +19,7 @@ export type ProfileRow = ProfileForGoals & {
  * surface a real error page.
  */
 const PROFILE_SELECT =
-  "id, display_name, target_mode, sex, birth_date, height_cm, weight_kg, activity_level, onboarded_at, photo_retention_hours";
+  "id, display_name, target_mode, sex, birth_date, height_cm, weight_kg, activity_level, goal_kind, weekly_change_kg, composition_focus, onboarded_at, photo_retention_hours";
 
 export async function getCurrentProfile(): Promise<ProfileRow | null> {
   const supabase = await createClient();

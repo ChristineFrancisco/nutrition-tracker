@@ -134,27 +134,58 @@ entry_items (
 
 `entries.eaten_at` (not `created_at`) is what filters key off, so the user can back-date a photo they forgot to upload. All tables: RLS policy `user_id = auth.uid()`.
 
-## 6. Targets — user chooses generic FDA or personalized DRI
+## 6. Targets — user chooses one of three modes
 
-Onboarding asks the user which mode they want, with a plain-English explanation:
+The user picks one of three target systems and can switch any time on `/goals`:
 
-- **Generic (FDA Daily Values)** — the one-size-fits-all numbers printed on nutrition labels, based on a 2,000 kcal reference diet. No personal info required. Good if the user wants a quick start or prefers not to enter health data.
-- **Personalized (DRI-based)** — user enters age and biological sex (and optionally height, weight, activity level for calorie accuracy). The app computes targets from Dietary Reference Intakes, which vary by age and sex.
+- **FDA generic** — the one-size-fits-all numbers printed on nutrition labels, based on a 2,000 kcal reference diet. No personal info required. Good if the user wants a quick start or prefers not to enter health data.
+- **DRI minimums** — Dietary Reference Intakes computed from the user's sex + age, with calorie + protein math from height/weight/activity. Maintenance only — no goal-direction or composition input.
+- **Customized goal** — DRI base + the **goal coach** (see §6a). Adds a calorie deficit or surplus based on a chosen weight-change rate, and scales protein based on body-composition focus (preserve / recomp / build).
 
-The choice is stored on the profile and can be switched later in Settings. Switching modes recomputes `daily_goals` and stores a new snapshot — historical reports keep whatever targets were in effect at the time (see "snapshot" below).
+The choice is stored on the profile (`target_mode`) and can be switched later. Switching modes recomputes `daily_goals` and stores a new snapshot — historical reports keep whatever targets were in effect at the time (see "snapshot" below).
 
 **Generic mode values:** static table from FDA label Daily Values (2,000 kcal reference, 2,300 mg sodium ceiling, 50 g added sugar ceiling, 28 g fiber, etc.).
 
 **Personalized mode computation:**
 
-- **Calories:** Mifflin–St Jeor BMR × activity multiplier (1.2 → 1.9). Falls back to a sex/age-banded default if weight/height aren't provided.
-- **Macros:** protein 0.8 g/kg (floor) to 1.2 g/kg depending on activity; fat 20–35% of calories; carbs fill remainder; saturated fat ≤ 10% of calories; added sugar ≤ 10% of calories; fiber 14 g per 1000 kcal.
+- **Calories:** Mifflin–St Jeor BMR × activity multiplier (1.2 → 1.9) gives TDEE (maintenance). The **goal coach** then applies a daily kcal delta = `weekly_change_kg × 7700 / 7` against TDEE; floored at 1200 kcal for safety. Falls back to a sex/age-banded default if weight/height aren't provided. See §6a.
+- **Macros:** protein scaled by composition focus (`preserve` 1.6 g/kg, `recomp` / `build` 2.0 g/kg) — sourced from ISSN 2017 position stand on protein for athletes; fat 25–27% of calories (lower in recomp/build to leave room for protein); carbs fill remainder; saturated fat ≤ 10% of calories; added sugar ≤ 10% of calories; fiber 14 g per 1000 kcal.
 - **Sodium:** 2300 mg ceiling (AHA); potassium 3400 mg (M) / 2600 mg (F).
 - **Vitamins & minerals:** DRI / RDA tables keyed on sex + age band; source is the NIH Office of Dietary Supplements. Values seeded into a static JSON file in the repo so we don't hit a network at request time.
 
 The UI labels every target with its source ("FDA generic" or "Personalized DRI") so the user always knows what they're being measured against. Recomputed when the profile changes; stored snapshot in `daily_goals` so historical reports aren't retroactively rewritten when the user updates their profile.
 
 A subset of vitamins and minerals also carries a **Tolerable Upper Intake Level (UL)** — the daily intake above which toxicity risk becomes meaningful. ULs sit alongside targets and ceilings as a third tier of the targets system and drive a separate "Excess intake" warning surface. See §15.
+
+## 6a. Goal coach
+
+The Goals page (`/goals`) hosts a **goal coach** that turns a user's intent — "lose 10 lbs in 5 months while building muscle" — into concrete calorie and macro targets. Visible only when `target_mode === "custom"`. Three new profile columns drive the math:
+
+- `goal_kind`: `lose` / `maintain` / `gain`
+- `weekly_change_kg`: signed numeric, clamped to [−1.0, +0.5] kg/week
+- `composition_focus`: `preserve` / `recomp` / `build`
+
+The coach is rendered inside a collapsible `<details>` panel — when the user has an active goal it stays collapsed by default, summarizing the current setup ("Lose 0.5 lb/week · Recomposition") in the header. Inside, the user picks a direction (lose / maintain / gain), then chooses **one** input mode via a small toggle:
+
+- **By rate + focus** — pick the rate from quick-picks (0.25 / 0.5 / 0.75 / 1.0 lb/week) and the composition focus from the three-card grid manually.
+- **By target weight + date** — enter target weight + target date; the system back-solves the weekly rate (snapped to the nearest defined option) and auto-picks a sensible focus from direction (lose → preserve, gain → build).
+
+The two input modes are mutually exclusive — only the active one's inputs render. Direction radio is shared.
+
+`computeGoals` then layers on top of the existing TDEE pipeline:
+
+```
+calorie_target = max(1200, TDEE + weekly_change_kg × 1100)
+protein_g      = weight_kg × { preserve: 1.6, recomp: 2.0, build: 2.0 }[focus]
+fat_g          = (calories × { preserve: 0.27, recomp: 0.25, build: 0.25 }[focus]) / 9
+carbs_g        = (calories − protein·4 − fat·9) / 4
+```
+
+The Goals page renders a live preview in the browser using the same math (mirrored, not imported, so we don't ship the full compute module to the client) so the user can dial things in before saving. Saving runs the canonical server-side `computeGoals` and snapshots the result into `daily_goals` so /today reads the new targets immediately.
+
+Active only in **Customized goal** mode. **DRI minimums** mode keeps the maintenance numbers without any deficit/surplus or focus-driven protein bump; **FDA generic** keeps its static reference values. The user switches between the three modes via a segmented control at the top of `/goals`.
+
+The coach also surfaces a layered set of safety hints — red **warnings** (calorie target hit the 1,200 kcal floor; deficit > 25% of TDEE) and amber **cautions** (deficit 20–25% of TDEE; loss > 1% of body weight per week; "build" focus combined with "lose" direction; surplus > 20% of TDEE when gaining). None of these block save — copy is non-shaming and suggests milder alternatives.
 
 ## 7. Screens
 
@@ -238,6 +269,9 @@ Replaced the M3 grid-of-cards with the row-based feed described in §7a: single-
 **M7 — Polish** 🚧 partial.
 Done: refine + re-analyze flow, retry on failed, light/dark theme with Eggshell-Rusty-Spice palette + persisted preference, no-FOUC theme script. **PWA shipped:** manifest.webmanifest with name/short_name/start_url=/today/icons/theme_color, source SVG → PNG icon set (192/512/180 + maskable), service worker (precaches static + cache-first on hashed assets, passthrough on HTML and mutations), iOS apple-touch-icon + appleWebApp meta, install-prompt chip on Chromium that captures `beforeinstallprompt`. Mobile responsiveness: headers stack on small screens, content shell widened to `max-w-3xl` so desktop layouts breathe.
 Outstanding: automatic photo cleanup cron (currently the 7-day expiry is honored at read time but the Storage objects aren't actively GC'd), friendly rate-limit error UX when the 20/24h cap fires, broader empty-state pass.
+
+**M9 — Goal coach** ✅ done.
+New profile columns (`goal_kind` / `weekly_change_kg` / `composition_focus`) added by migration 0008. `computeGoals` extended to apply the daily kcal delta against TDEE and to scale protein by composition focus. Goal Coach UI on `/goals` (Personalized mode only): direction radio, rate quick-picks, optional target-weight + target-date calculator that snaps to the nearest rate, composition focus card grid, live calorie + macro preview, "Why these numbers?" explainer, "Reset to maintenance" sibling form. Save action validates input, writes profile, calls `recomputeAndSaveGoals`, revalidates `/today` and `/goals`. See §6a.
 
 **M8 — Upper-limit safety warnings** ✅ done.
 Phase 1: UPPER_LIMITS data table at `src/lib/targets/upper_limits.ts` for 12 nutrients (vitamin A retinol, D, E, B6, niacin, folic acid, iron, zinc, selenium, calcium [age-banded], magnesium, choline) with one-line risk copy + source flag (`total` / `added` / `supplemental`); `computeExcesses(totals, upperLimits)` helper next to computeHighlights; `<ExcessIntakeCallout>` red component with per-nutrient row (total / limit / pct), risk hint, and the supplements caveat for source-restricted nutrients; mounted on Today and the historical day view above DailyTotals.

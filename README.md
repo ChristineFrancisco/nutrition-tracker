@@ -24,6 +24,8 @@ See [`plan.md`](./plan.md) for the full product + implementation plan.
 
 **M7 — Polish:** PWA shipped (manifest, service worker, app icons, install-prompt chip on Chromium, iOS apple-touch-icon + appleWebApp meta, theme-color tinting). Mobile responsiveness pass — headers stack on small screens, content shell widened. Outstanding: automatic photo cleanup cron, friendly rate-limit error UX, broader empty-state pass.
 
+**M9 — Goal coach + 3-mode picker:** done. `/goals` now sports a segmented mode picker: **FDA generic** (one-size-fits-all reference) / **DRI minimums** (maintenance numbers personalized to sex + age + body) / **Customized goal** (DRI + goal coach). The goal coach lives inside a collapsible panel and lets the user pick a direction (lose / maintain / gain) and **either** a rate via quick-picks + composition focus **or** a target weight + target date (system back-solves the rate). Live in-browser preview shows the suggested calorie target with delta vs. maintenance and the macro split, plus layered safety hints (red warnings for sub-1,200 kcal floor or > 25% deficit; amber cautions for steep-but-OK deficits, fast-for-body-weight loss rates, build-while-cutting, > 20% surplus). Save runs the canonical server-side `computeGoals` and snapshots the result into `daily_goals`. Migrations `0008_goal_coach.sql` (new profile columns) and `0009_target_mode_custom.sql` (added `'custom'` to the `target_mode` enum).
+
 **M8 — Upper-intake / overdose warnings:** done. Tolerable Upper Intake Levels for 12 nutrients (vitamin A retinol 3000 mcg, D 100 mcg, E 1000 mg, B6 100 mg, niacin 35 mg, folic acid 1000 mcg, iron 45 mg, zinc 40 mg, selenium 400 mcg, calcium 2500/2000 mg by age, magnesium 350 mg supplemental, choline 3500 mg). Surfaced four ways: (1) a red **Excess intake** callout above DailyTotals on Today and the day-history view, with per-nutrient total/limit/% and a "supplements drive most of this" caveat for niacin / folic acid / supplemental magnesium; (2) red overflow cap + ring + red text on the micros grid bars when a UL is crossed; (3) red dot on month-calendar cells for any day a UL was crossed (distinct from the amber ⚠ low-confidence marker); (4) chronic-exposure stat in the range scorecard ("Over upper limit: N days", red when > 0) plus a per-day red dot in the breakdown list — see [`plan.md`](./plan.md) §15.
 
 ## Prerequisites
@@ -78,6 +80,8 @@ Open the Supabase dashboard's **SQL Editor** and run each file in `supabase/migr
 - `0005_retention_and_rejected_status.sql` — 7-day default retention + `rejected` entry status
 - `0006_expand_nutrients.sql` — expand `daily_goals` and the `entry_items.nutrients` JSONB shape to the full 32-field Nutrients schema (added cholesterol, potassium, full vitamin/mineral set)
 - `0007_entry_type.sql` — `entries.entry_type` column (`'photo' | 'text'`) so text-only entries can use the same table without a photo path
+- `0008_goal_coach.sql` — `goal_kind` / `weekly_change_kg` / `composition_focus` columns on profiles for the goal coach
+- `0009_target_mode_custom.sql` — adds `'custom'` to the `target_mode` enum (FDA generic / DRI minimums / Customized goal)
 
 ### 6. Run the dev server
 

@@ -6,8 +6,10 @@ import {
   NUTRIENT_SEMANTICS,
   type NutrientKey,
 } from "@/lib/targets/types";
-import { switchToGeneric } from "./actions";
 import OmittedNutrientsModal from "./OmittedNutrientsModal";
+import GoalCoach, { ResetToMaintenanceForm } from "./GoalCoach";
+import ModePicker from "./ModePicker";
+import { mifflinStJeorBmr, ageFromBirthDate } from "@/lib/targets/compute";
 
 export default async function GoalsPage({
   searchParams,
@@ -27,7 +29,9 @@ export default async function GoalsPage({
   const modeLabel =
     profile.target_mode === "generic"
       ? "FDA generic (2,000 kcal reference)"
-      : "Personalized (DRI-based)";
+      : profile.target_mode === "custom"
+        ? "Customized goal (DRI + coach)"
+        : "DRI minimums (for your body)";
 
   const groups: { title: string; keys: NutrientKey[] }[] = [
     {
@@ -87,23 +91,6 @@ export default async function GoalsPage({
           <p className="mt-1 text-sm text-zinc-500">
             Source: <span className="font-medium">{modeLabel}</span>
           </p>
-          {profile.target_mode === "personalized" ? (
-            <form action={switchToGeneric} className="mt-3">
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
-              >
-                Switch to FDA generic →
-              </button>
-            </form>
-          ) : (
-            <Link
-              href="/profile"
-              className="mt-3 inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
-            >
-              Switch to personalized →
-            </Link>
-          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -121,9 +108,33 @@ export default async function GoalsPage({
         </div>
       </header>
 
+      {/* Mode picker — pick which target system to use. */}
+      <div className="mb-6">
+        <ModePicker current={profile.target_mode} />
+      </div>
+
       {justSaved && (
         <div className="mb-6 rounded-lg bg-brand-50 p-3 text-sm text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
-          Targets recomputed from your profile.
+          Targets recomputed.
+        </div>
+      )}
+
+      {profile.target_mode === "custom" && (
+        <div className="mb-6 space-y-1">
+          <GoalCoach
+            initial={{
+              goal_kind: profile.goal_kind ?? "maintain",
+              weekly_change_kg: profile.weekly_change_kg ?? 0,
+              composition_focus: profile.composition_focus ?? "preserve",
+              tdee_kcal: tdeeFor(profile),
+              weight_kg: profile.weight_kg,
+            }}
+          />
+          {(profile.goal_kind ?? "maintain") !== "maintain" && (
+            <ResetToMaintenanceForm
+              composition_focus={profile.composition_focus ?? "preserve"}
+            />
+          )}
         </div>
       )}
 
@@ -180,4 +191,44 @@ function formatNumber(n: number): string {
   if (n >= 100) return Math.round(n).toLocaleString();
   if (n >= 10) return n.toFixed(0);
   return n.toFixed(1);
+}
+
+/**
+ * Compute TDEE for the goal coach preview. Mirrors the personalized
+ * branch of computeGoals up to the calorie-delta step — we deliberately
+ * stop before the delta so the coach can show "your maintenance is X
+ * kcal" and let the user reason about their target relative to that.
+ *
+ * Falls back to 2000 kcal when height/weight are missing so the coach
+ * still renders something sensible for new users; the fallback is
+ * intentionally round so the user can tell it's a default rather than
+ * a precise estimate.
+ */
+function tdeeFor(profile: {
+  sex: import("@/lib/targets/types").Sex | null;
+  birth_date: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  activity_level: import("@/lib/targets/types").ActivityLevel | null;
+}): number {
+  if (!profile.weight_kg || !profile.height_cm) return 2000;
+  const sex = profile.sex ?? "other";
+  const age = profile.birth_date ? ageFromBirthDate(profile.birth_date) : 30;
+  const bmr = mifflinStJeorBmr(
+    sex,
+    profile.weight_kg,
+    profile.height_cm,
+    age,
+  );
+  const mult: Record<
+    import("@/lib/targets/types").ActivityLevel,
+    number
+  > = {
+    sedentary: 1.2,
+    light: 1.375,
+    moderate: 1.55,
+    active: 1.725,
+    very_active: 1.9,
+  };
+  return Math.round(bmr * mult[profile.activity_level ?? "moderate"]);
 }
