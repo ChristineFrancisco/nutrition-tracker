@@ -5,6 +5,10 @@ import type { Nutrients, ProfileForGoals } from "@/lib/targets/types";
 export type ProfileRow = ProfileForGoals & {
   id: string;
   display_name: string | null;
+  /** From auth.users — not stored on profiles. Filled in by
+   *  getCurrentProfile so the UI can render the signed-in identity
+   *  in headers and menus without a second round-trip. */
+  email: string;
   onboarded_at: string | null;
   photo_retention_hours: number;
 };
@@ -24,6 +28,8 @@ export async function getCurrentProfile(): Promise<ProfileRow | null> {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
+  const email = user.email ?? "";
+
   const { data, error } = await supabase
     .from("profiles")
     .select(PROFILE_SELECT)
@@ -31,7 +37,7 @@ export async function getCurrentProfile(): Promise<ProfileRow | null> {
     .maybeSingle();
 
   if (error) throw new Error(`Load profile failed: ${error.message}`);
-  if (data) return data as ProfileRow;
+  if (data) return { ...(data as Omit<ProfileRow, "email">), email };
 
   // Profile row missing — user pre-dates the trigger. Backfill it.
   const { error: insertError } = await supabase
@@ -45,7 +51,7 @@ export async function getCurrentProfile(): Promise<ProfileRow | null> {
     .eq("id", user.id)
     .single();
   if (fetchError) throw new Error(`Load profile failed: ${fetchError.message}`);
-  return fresh as ProfileRow;
+  return { ...(fresh as Omit<ProfileRow, "email">), email };
 }
 
 /**

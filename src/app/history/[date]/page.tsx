@@ -10,6 +10,8 @@ import { computeUpperLimits } from "@/lib/targets/upper_limits";
 import AddEntry from "@/app/today/AddEntry";
 import DailyTotals from "@/app/today/DailyTotals";
 import EntryCard from "@/app/today/EntryCard";
+import UserMenu from "@/components/UserMenu";
+import { deriveInitials } from "@/lib/initials";
 
 /**
  * Historical day view — same layout as Today but without the capture
@@ -86,7 +88,7 @@ export default async function HistoryDatePage({
             {longDateLabel}
           </h1>
         </div>
-        <nav className="flex flex-wrap gap-2 sm:shrink-0">
+        <nav className="flex flex-wrap items-center gap-2 sm:shrink-0">
           <Link
             href={weekHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -105,6 +107,11 @@ export default async function HistoryDatePage({
           >
             Today
           </Link>
+          <UserMenu
+            initials={deriveInitials(profile.display_name, profile.email)}
+            email={profile.email}
+            displayName={profile.display_name}
+          />
         </nav>
       </header>
 

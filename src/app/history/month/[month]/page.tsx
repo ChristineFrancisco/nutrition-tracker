@@ -8,6 +8,8 @@ import {
   type DayCaloriesCell,
 } from "@/lib/totals";
 import { computeUpperLimits } from "@/lib/targets/upper_limits";
+import UserMenu from "@/components/UserMenu";
+import { deriveInitials } from "@/lib/initials";
 
 /**
  * Month heatmap — calendar grid colored by % of calorie target, one
@@ -107,7 +109,7 @@ export default async function HistoryMonthPage({
             </p>
           )}
         </div>
-        <nav className="flex flex-wrap gap-2 sm:shrink-0">
+        <nav className="flex flex-wrap items-center gap-2 sm:shrink-0">
           <Link
             href={`/history/week/${formatLocalDateString(weekAnchorForMonth(monthStart))}`}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -120,6 +122,11 @@ export default async function HistoryMonthPage({
           >
             Today
           </Link>
+          <UserMenu
+            initials={deriveInitials(profile.display_name, profile.email)}
+            email={profile.email}
+            displayName={profile.display_name}
+          />
         </nav>
       </header>
 

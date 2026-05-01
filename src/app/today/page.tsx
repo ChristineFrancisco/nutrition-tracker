@@ -7,6 +7,8 @@ import { computeUpperLimits } from "@/lib/targets/upper_limits";
 import AddEntry from "./AddEntry";
 import DailyTotals from "./DailyTotals";
 import EntryCard from "./EntryCard";
+import UserMenu from "@/components/UserMenu";
+import { deriveInitials } from "@/lib/initials";
 
 export default async function TodayPage() {
   const profile = await getCurrentProfile();
@@ -75,7 +77,7 @@ export default async function TodayPage() {
             )}
           </p>
         </div>
-        <nav className="flex flex-wrap gap-2">
+        <nav className="flex flex-wrap items-center gap-2">
           <Link
             href={yesterdayHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -94,26 +96,11 @@ export default async function TodayPage() {
           >
             Month
           </Link>
-          <Link
-            href="/goals"
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            Goals
-          </Link>
-          <Link
-            href="/profile"
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            Profile
-          </Link>
-          <form action="/auth/signout" method="post">
-            <button
-              type="submit"
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            >
-              Sign out
-            </button>
-          </form>
+          <UserMenu
+            initials={deriveInitials(profile.display_name, profile.email)}
+            email={profile.email}
+            displayName={profile.display_name}
+          />
         </nav>
       </header>
 

@@ -6,6 +6,8 @@ import { getRangeData, zeroNutrients } from "@/lib/totals";
 import type { Nutrients, NutrientKey } from "@/lib/targets/types";
 import DailyTotals from "@/app/today/DailyTotals";
 import WeekModeToggle from "./WeekModeToggle";
+import UserMenu from "@/components/UserMenu";
+import { deriveInitials } from "@/lib/initials";
 
 type Mode = "calendar" | "trailing";
 
@@ -158,7 +160,7 @@ export default async function WeekPage({
             Targets shown are 7× your daily goals.
           </p>
         </div>
-        <nav className="flex flex-wrap gap-2 sm:shrink-0">
+        <nav className="flex flex-wrap items-center gap-2 sm:shrink-0">
           <Link
             href={monthHref}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -171,6 +173,11 @@ export default async function WeekPage({
           >
             Today
           </Link>
+          <UserMenu
+            initials={deriveInitials(profile.display_name, profile.email)}
+            email={profile.email}
+            displayName={profile.display_name}
+          />
         </nav>
       </header>
 
