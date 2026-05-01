@@ -27,10 +27,17 @@ import {
 import type { AnalyzeResult, NutritionEstimator } from "./types";
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
-// 2048 gives comfortable headroom over the ~500–800 tokens a typical
-// multi-item JSON needs. Paired with thinkingBudget=0 below, all of this
+// 8192 gives comfortable headroom for multi-item meals — the 32-nutrient
+// schema runs ~150–200 tokens per item, so a 5-item meal already pushes
+// past 1000 tokens of items alone, and the totals + highlights + model
+// notes add another ~500. 2048 was tight; in practice we were truncating
+// on photos with 4+ identifiable items. 8192 absorbs even pathological
+// "everything bagel + lox + cream cheese + capers + onion + tomato +
+// dill + lemon" cases without burning meaningful free-tier quota
+// (Gemini 2.5 Flash supports up to 65k output tokens; we're using ~12%
+// of that ceiling). Paired with thinkingBudget=0 below, all of this
 // budget is available for the JSON itself.
-const MAX_OUTPUT_TOKENS = 2048;
+const MAX_OUTPUT_TOKENS = 8192;
 
 // Retry schedule for transient Gemini errors (503 UNAVAILABLE, 429
 // RESOURCE_EXHAUSTED, 500 INTERNAL, or outright network failures). Most
