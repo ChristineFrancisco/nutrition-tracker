@@ -82,14 +82,17 @@ export function zeroNutrients(): Nutrients {
  * dayBoundaries math as getEntriesForDate so both views agree on what
  * that date means.
  */
-export async function getTotalsForDate(day: Date): Promise<TodayTotals> {
+export async function getTotalsForDate(
+  day: Date,
+  tz?: string | null,
+): Promise<TodayTotals> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { totals: zeroNutrients(), entryCount: 0 };
 
-  const { start, end } = dayBoundaries(day);
+  const { start, end } = dayBoundaries(day, tz);
 
   // One query: that day's analyzed entries with their items' nutrients.
   // PostgREST nested select lets us avoid a round-trip for items.
@@ -132,8 +135,10 @@ export async function getTotalsForDate(day: Date): Promise<TodayTotals> {
  * Thin wrapper: today's totals. Matches the getTodayEntries shape so
  * /today's imports don't change.
  */
-export async function getTodayTotals(): Promise<TodayTotals> {
-  return getTotalsForDate(new Date());
+export async function getTodayTotals(
+  tz?: string | null,
+): Promise<TodayTotals> {
+  return getTotalsForDate(new Date(), tz);
 }
 
 /**
@@ -349,6 +354,9 @@ export async function getRangeData(
    *  hasUpperLimitExcess flag is computed from per-day totals of the
    *  UL-relevant nutrients. Without it the flag stays false. */
   upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>,
+  /** User's IANA timezone, for bucketing entries by their local
+   *  calendar day. Falls back to the server's tz when omitted. */
+  tz?: string | null,
 ): Promise<RangeData> {
   const supabase = await createClient();
   const {
@@ -684,6 +692,9 @@ export async function getMonthCaloriesByDay(
    *  totals of the UL-relevant nutrients. When omitted, the flag stays
    *  false. */
   upperLimits?: Partial<Record<UpperLimitKey, UpperLimitMeta>>,
+  /** User's IANA timezone, for bucketing entries by their local
+   *  calendar day. Falls back to the server's tz when omitted. */
+  tz?: string | null,
 ): Promise<Map<string, DayCaloriesCell>> {
   const supabase = await createClient();
   const {
@@ -691,7 +702,7 @@ export async function getMonthCaloriesByDay(
   } = await supabase.auth.getUser();
   if (!user) return new Map();
 
-  const { start, end } = monthBoundaries(day);
+  const { start, end } = monthBoundaries(day, tz);
 
   const { data, error } = await supabase
     .from("entries")
@@ -729,7 +740,7 @@ export async function getMonthCaloriesByDay(
     // Bucket by the local-tz date of eaten_at. new Date() parses ISO
     // timestamps into the process's local tz, so formatLocalDateString
     // gives us the right calendar day.
-    const key = formatLocalDateString(new Date(entry.eaten_at));
+    const key = formatLocalDateString(new Date(entry.eaten_at), tz);
     const cell = out.get(key) ?? {
       date: key,
       calories: 0,

@@ -9,6 +9,11 @@ export type ProfileRow = ProfileForGoals & {
    *  getCurrentProfile so the UI can render the signed-in identity
    *  in headers and menus without a second round-trip. */
   email: string;
+  /** IANA timezone string (e.g. "America/Los_Angeles"). Captured
+   *  from the browser on first sign-in by the CaptureTimezone
+   *  client component. Null until the client has had a chance to
+   *  send it; the boundary helpers fall back to UTC when missing. */
+  timezone: string | null;
   onboarded_at: string | null;
   photo_retention_hours: number;
 };
@@ -19,7 +24,7 @@ export type ProfileRow = ProfileForGoals & {
  * surface a real error page.
  */
 const PROFILE_SELECT =
-  "id, display_name, target_mode, sex, birth_date, height_cm, weight_kg, activity_level, goal_kind, weekly_change_kg, composition_focus, onboarded_at, photo_retention_hours";
+  "id, display_name, target_mode, sex, birth_date, height_cm, weight_kg, activity_level, goal_kind, weekly_change_kg, composition_focus, timezone, onboarded_at, photo_retention_hours";
 
 export async function getCurrentProfile(): Promise<ProfileRow | null> {
   const supabase = await createClient();

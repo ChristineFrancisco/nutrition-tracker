@@ -46,10 +46,11 @@ export default async function HistoryDatePage({
   if (!profile) redirect("/login");
   if (!profile.onboarded_at) redirect("/onboarding");
 
+  const tz = profile.timezone;
   const [goals, entries, { totals, entryCount }] = await Promise.all([
     getGoalsEffectiveOn(day),
-    getEntriesForDate(day),
-    getTotalsForDate(day),
+    getEntriesForDate(day, tz),
+    getTotalsForDate(day, tz),
   ]);
 
   // ULs are computed from the user's profile (calcium has an age band,

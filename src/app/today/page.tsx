@@ -9,6 +9,7 @@ import DailyTotals from "./DailyTotals";
 import EntryCard from "./EntryCard";
 import UserMenu from "@/components/UserMenu";
 import { deriveInitials } from "@/lib/initials";
+import CaptureTimezone from "@/components/CaptureTimezone";
 
 export default async function TodayPage() {
   const profile = await getCurrentProfile();
@@ -19,10 +20,15 @@ export default async function TodayPage() {
   // M2 gate: if the user hasn't picked a target mode yet, start onboarding.
   if (!profile.onboarded_at) redirect("/onboarding");
 
+  // The user's IANA timezone drives day-boundary math so "today"
+  // matches their wall clock instead of the server's (UTC on Vercel).
+  // Captured client-side by CaptureTimezone on first sign-in; null for
+  // legacy rows, in which case the helpers fall back to server-local.
+  const tz = profile.timezone;
   const [goals, entries, { totals, entryCount }] = await Promise.all([
     getLatestGoals(),
-    getTodayEntries(),
-    getTodayTotals(),
+    getTodayEntries(tz),
+    getTodayTotals(tz),
   ]);
   const modeLabel =
     profile.target_mode === "generic" ? "FDA generic" : "Personalized DRI";
@@ -103,6 +109,8 @@ export default async function TodayPage() {
           />
         </nav>
       </header>
+
+      <CaptureTimezone current={profile.timezone} />
 
       <AddEntry userId={profile.id} />
 

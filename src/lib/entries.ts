@@ -1,5 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Nutrients } from "@/lib/targets/types";
+import {
+  dayBoundariesInTz,
+  formatDateInTz,
+  monthBoundariesInTz,
+} from "@/lib/tz";
 
 export type EntryStatus = "pending" | "analyzed" | "failed" | "rejected";
 
@@ -71,7 +76,15 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour — plenty for a page render.
  * column (populated from `Intl.DateTimeFormat().resolvedOptions().timeZone`
  * at sign-up) and doing the boundary math from that.
  */
-export function dayBoundaries(day: Date): { start: Date; end: Date } {
+export function dayBoundaries(
+  day: Date,
+  tz?: string | null,
+): { start: Date; end: Date } {
+  // When the caller has the user's IANA timezone, do the boundary math
+  // there so "today" matches their wall clock. Without it, fall back
+  // to the server's local tz (UTC on Vercel) — historical behavior,
+  // accepted as imprecise.
+  if (tz) return dayBoundariesInTz(day, tz);
   const start = new Date(day);
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
@@ -85,15 +98,22 @@ export function dayBoundaries(day: Date): { start: Date; end: Date } {
  * is the 1st of the next month at 00:00. Same caveat about tz as
  * dayBoundaries applies.
  */
-export function monthBoundaries(day: Date): { start: Date; end: Date } {
+export function monthBoundaries(
+  day: Date,
+  tz?: string | null,
+): { start: Date; end: Date } {
+  if (tz) return monthBoundariesInTz(day, tz);
   const start = new Date(day.getFullYear(), day.getMonth(), 1, 0, 0, 0, 0);
   const end = new Date(start);
   end.setMonth(end.getMonth() + 1);
   return { start, end };
 }
 
-/** YYYY-MM-DD in the Node process's local timezone. */
-export function formatLocalDateString(d: Date): string {
+/** YYYY-MM-DD in the user's tz when supplied, otherwise the Node
+ *  process's local tz. Used as a Map key when bucketing entries by
+ *  day; if the tz isn't passed consistently, days will straddle. */
+export function formatLocalDateString(d: Date, tz?: string | null): string {
+  if (tz) return formatDateInTz(d, tz);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -110,14 +130,17 @@ export function formatLocalDateString(d: Date): string {
  * 1-5 per entry) and only two short text fields each, so pulling them
  * always is cheaper than a per-entry fetch on expand.
  */
-export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
+export async function getEntriesForDate(
+  day: Date,
+  tz?: string | null,
+): Promise<EntryRow[]> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { start, end } = dayBoundaries(day);
+  const { start, end } = dayBoundaries(day, tz);
 
   const { data, error } = await supabase
     .from("entries")
@@ -209,8 +232,10 @@ export async function getEntriesForDate(day: Date): Promise<EntryRow[]> {
  * "today" read as such, and so we don't have to pass `new Date()` at
  * every call.
  */
-export async function getTodayEntries(): Promise<EntryRow[]> {
-  return getEntriesForDate(new Date());
+export async function getTodayEntries(
+  tz?: string | null,
+): Promise<EntryRow[]> {
+  return getEntriesForDate(new Date(), tz);
 }
 
 /**

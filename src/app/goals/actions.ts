@@ -123,6 +123,7 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+
 /**
  * Switch the user's target mode (FDA generic / DRI minimums / Customized
  * goal). Recomputes daily_goals after the switch so /today picks up the
